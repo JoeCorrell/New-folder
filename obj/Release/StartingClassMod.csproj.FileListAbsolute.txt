@@ -1,0 +1,9 @@
+C:\Projects\valheim starting class mod\New folder\bin\Release\StartingClassMod.dll
+C:\Projects\valheim starting class mod\New folder\bin\Release\StartingClassMod.pdb
+C:\Projects\valheim starting class mod\New folder\obj\Release\StartingClassMod.csproj.AssemblyReference.cache
+C:\Projects\valheim starting class mod\New folder\obj\Release\StartingClassMod.GeneratedMSBuildEditorConfig.editorconfig
+C:\Projects\valheim starting class mod\New folder\obj\Release\StartingClassMod.AssemblyInfoInputs.cache
+C:\Projects\valheim starting class mod\New folder\obj\Release\StartingClassMod.AssemblyInfo.cs
+C:\Projects\valheim starting class mod\New folder\obj\Release\StartingClassMod.csproj.CoreCompileInputs.cache
+C:\Projects\valheim starting class mod\New folder\obj\Release\StartingClassMod.dll
+C:\Projects\valheim starting class mod\New folder\obj\Release\StartingClassMod.pdb
