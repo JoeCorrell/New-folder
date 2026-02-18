@@ -72,10 +72,6 @@ namespace StartingClassMod
             _canvasGO.SetActive(true);
             _isVisible = true;
 
-            SetupPreviewClone();
-            if (_previewCamera != null)
-                _previewCamera.enabled = true;
-
             PopulateClassList();
             ClearDetail();
 
@@ -85,9 +81,6 @@ namespace StartingClassMod
         {
             _isVisible = false;
             _selectedIndex = -1;
-            if (_previewCamera != null)
-                _previewCamera.enabled = false;
-            ClearPreviewClone();
             if (_canvasGO != null)
                 _canvasGO.SetActive(false);
         }
@@ -229,7 +222,37 @@ namespace StartingClassMod
             panelRT.anchorMin = new Vector2(0.5f, 0.5f);
             panelRT.anchorMax = new Vector2(0.5f, 0.5f);
             panelRT.pivot = new Vector2(0.5f, 0.5f);
-            panelRT.anchoredPosition = Vector2.zero;
+
+            // Compute the list column width from the ScrollRect's anchors and the panel's sizeDelta.
+            // rect.width is unreliable before a layout pass, but sizeDelta and anchors are immediate.
+            float origPanelWidth = panelRT.sizeDelta.x;
+            float listColumnWidth = 200f; // fallback
+            if (invGui.m_recipeListRoot != null)
+            {
+                var scrollRect = invGui.m_recipeListRoot.GetComponentInParent<ScrollRect>();
+                if (scrollRect != null)
+                {
+                    var scrollRT = scrollRect.transform as RectTransform;
+                    // width = anchorSpan * parentWidth + sizeDelta.x
+                    float anchorSpan = scrollRT.anchorMax.x - scrollRT.anchorMin.x;
+                    listColumnWidth = anchorSpan * origPanelWidth + scrollRT.sizeDelta.x;
+                    if (listColumnWidth <= 10f) listColumnWidth = 200f; // sanity check
+                }
+            }
+
+            // Widen panel to the right by the list column width (left edge stays in place)
+            float extraWidth = listColumnWidth;
+            panelRT.sizeDelta = new Vector2(origPanelWidth + extraWidth, panelRT.sizeDelta.y);
+            panelRT.anchoredPosition = new Vector2(extraWidth / 2f, 0f);
+
+            // Children pinned to the right edge (anchorMin.x ~= 1 && anchorMax.x ~= 1)
+            // ride the right edge when the panel widens — shift them back left.
+            // Full-stretch backgrounds (0→1) are left alone so they cover the whole panel.
+            foreach (RectTransform child in _clonedPanel.transform)
+            {
+                if (child.anchorMin.x >= 0.99f && child.anchorMax.x >= 0.99f)
+                    child.anchoredPosition += new Vector2(-extraWidth, 0f);
+            }
 
 
             // ══════════════════════════════════════════
@@ -363,9 +386,6 @@ namespace StartingClassMod
 
             // Reset detail section
             ClearDetail();
-
-            // ── Player preview (embedded in right side of panel) ──
-            CreatePreviewPanel(invGui);
 
             _canvasGO.SetActive(false);
             _uiBuilt = true;
