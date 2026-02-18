@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using HarmonyLib;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -41,11 +42,14 @@ namespace StartingClassMod
         // ── Class list elements (instantiated from recipe element prefab) ──
         private readonly List<GameObject> _classElements = new List<GameObject>();
 
-        // ── Close button (added manually for command-based opens) ──
-        private GameObject _closeButton;
-
-        // ── Default button color (captured from craft button clone) ──
-        private Color _defaultButtonColor = Color.white;
+        // ── Player preview ──
+        private RenderTexture _previewRT;
+        private GameObject _previewCamGO;
+        private Camera _previewCamera;
+        private GameObject _previewClone;
+        private Light _previewLight;
+        private GameObject _previewPanel;
+        private static readonly Vector3 PreviewSpawnPos = new Vector3(10000f, 5000f, 10000f);
 
         // ── Colors ──
         static readonly Color ColOverlay = new Color(0f, 0f, 0f, 0.65f);
@@ -68,17 +72,22 @@ namespace StartingClassMod
             _canvasGO.SetActive(true);
             _isVisible = true;
 
+            SetupPreviewClone();
+            if (_previewCamera != null)
+                _previewCamera.enabled = true;
+
             PopulateClassList();
             ClearDetail();
 
-            if (_closeButton != null)
-                _closeButton.SetActive(isFromCommand);
         }
 
         public void Close()
         {
             _isVisible = false;
             _selectedIndex = -1;
+            if (_previewCamera != null)
+                _previewCamera.enabled = false;
+            ClearPreviewClone();
             if (_canvasGO != null)
                 _canvasGO.SetActive(false);
         }
@@ -97,12 +106,20 @@ namespace StartingClassMod
             if (_isFromCommand && Input.GetKeyDown(KeyCode.Escape))
                 Close();
 
+            // Update preview camera position
+            UpdatePreviewCamera();
+
             // Gamepad input
             UpdateGamepadInput();
         }
 
         private void OnDestroy()
         {
+            if (_previewCamera != null) _previewCamera.enabled = false;
+            ClearPreviewClone();
+            if (_previewCamGO != null) Destroy(_previewCamGO);
+            if (_previewRT != null) { _previewRT.Release(); Destroy(_previewRT); }
+            if (_previewPanel != null) Destroy(_previewPanel);
             if (_canvasGO != null) Destroy(_canvasGO);
         }
 
@@ -202,13 +219,12 @@ namespace StartingClassMod
             overlayImg.color = ColOverlay;
 
             // ══════════════════════════════════════════
-            //  CLONE the entire crafting panel
+            //  CLONE the crafting panel (unchanged dimensions)
             // ══════════════════════════════════════════
             _clonedPanel = Instantiate(invGui.m_crafting.gameObject, _canvasGO.transform);
             _clonedPanel.name = "ClassSelection_CraftingClone";
             _clonedPanel.SetActive(true);
 
-            // Center on screen
             var panelRT = _clonedPanel.GetComponent<RectTransform>();
             panelRT.anchorMin = new Vector2(0.5f, 0.5f);
             panelRT.anchorMax = new Vector2(0.5f, 0.5f);
@@ -298,6 +314,7 @@ namespace StartingClassMod
                 }
             }
 
+
             // Remove UIGroupHandler from clone to avoid input conflicts with original inventory
             foreach (var c in _clonedPanel.GetComponentsInChildren<UIGroupHandler>(true))
                 Destroy(c);
@@ -347,53 +364,193 @@ namespace StartingClassMod
             // Reset detail section
             ClearDetail();
 
-            // ── Close button (top-right corner, command-only) ──
-            CreateCloseButton();
+            // ── Player preview (embedded in right side of panel) ──
+            CreatePreviewPanel(invGui);
 
             _canvasGO.SetActive(false);
             _uiBuilt = true;
-            StartingClassPlugin.Log("Class selection UI built (cloned from crafting panel).");
         }
 
-        private void CreateCloseButton()
+        // ══════════════════════════════════════════
+        //  PLAYER PREVIEW (separate panel to the right)
+        // ══════════════════════════════════════════
+
+        private void CreatePreviewPanel(InventoryGui invGui)
         {
-            var closeGO = new GameObject("CloseButton", typeof(RectTransform));
-            closeGO.transform.SetParent(_clonedPanel.transform, false);
+            // ── RenderTexture ──
+            _previewRT = new RenderTexture(256, 512, 24, RenderTextureFormat.ARGB32);
 
-            var closeRT = closeGO.GetComponent<RectTransform>();
-            closeRT.anchorMin = new Vector2(1, 1);
-            closeRT.anchorMax = new Vector2(1, 1);
-            closeRT.pivot = new Vector2(1, 1);
-            closeRT.sizeDelta = new Vector2(30, 30);
-            closeRT.anchoredPosition = new Vector2(-5, -5);
+            // ── Preview Camera ──
+            _previewCamGO = new GameObject("ClassPreview_Camera");
+            DontDestroyOnLoad(_previewCamGO);
+            _previewCamera = _previewCamGO.AddComponent<Camera>();
+            _previewCamera.targetTexture = _previewRT;
+            _previewCamera.clearFlags = CameraClearFlags.SolidColor;
+            _previewCamera.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            _previewCamera.fieldOfView = 30f;
+            _previewCamera.nearClipPlane = 0.1f;
+            _previewCamera.farClipPlane = 10f;
+            _previewCamera.depth = -2;
+            _previewCamera.enabled = false;
 
-            var closeBG = closeGO.AddComponent<Image>();
-            closeBG.color = new Color(0.38f, 0.11f, 0.11f, 0.9f);
+            int charLayer = LayerMask.NameToLayer("character");
+            if (charLayer < 0) charLayer = 9;
+            _previewCamera.cullingMask = 1 << charLayer;
 
-            var closeBtn = closeGO.AddComponent<Button>();
-            closeBtn.targetGraphic = closeBG;
-            closeBtn.navigation = new Navigation { mode = Navigation.Mode.None };
-            closeBtn.onClick.AddListener(Close);
+            Vector3 cloneCenter = PreviewSpawnPos + Vector3.up * 0.9f;
+            _previewCamGO.transform.position = cloneCenter + Vector3.forward * 4.5f;
+            _previewCamGO.transform.LookAt(cloneCenter);
 
-            var labelGO = new GameObject("Label", typeof(RectTransform));
-            labelGO.transform.SetParent(closeGO.transform, false);
-            var labelRT = labelGO.GetComponent<RectTransform>();
-            labelRT.anchorMin = Vector2.zero;
-            labelRT.anchorMax = Vector2.one;
-            labelRT.offsetMin = Vector2.zero;
-            labelRT.offsetMax = Vector2.zero;
+            // ── Dedicated light ──
+            var lightGO = new GameObject("ClassPreview_Light");
+            lightGO.transform.SetParent(_previewCamGO.transform, false);
+            lightGO.transform.localPosition = new Vector3(0.5f, 1f, 0f);
+            lightGO.transform.localRotation = Quaternion.Euler(30f, -15f, 0f);
+            _previewLight = lightGO.AddComponent<Light>();
+            _previewLight.type = LightType.Directional;
+            _previewLight.color = new Color(1f, 0.95f, 0.85f);
+            _previewLight.intensity = 1.2f;
+            _previewLight.cullingMask = 1 << charLayer;
 
-            var labelTxt = labelGO.AddComponent<TextMeshProUGUI>();
-            if (_recipeName != null)
-                labelTxt.font = _recipeName.font;
-            labelTxt.text = "X";
-            labelTxt.fontSize = 18;
-            labelTxt.color = Color.white;
-            labelTxt.alignment = TextAlignmentOptions.Center;
-            labelTxt.raycastTarget = false;
+            // ── Separate preview panel, positioned to the right of the class selection panel ──
+            var panelRT = _clonedPanel.GetComponent<RectTransform>();
+            float panelWidth = panelRT.sizeDelta.x;
+            float panelHeight = panelRT.sizeDelta.y;
+            float gap = 10f;
+            float previewWidth = panelHeight * 0.4f; // portrait aspect
 
-            _closeButton = closeGO;
-            closeGO.SetActive(false);
+            // Find the actual background image (may be on the root or a child)
+            Image sourceImg = null;
+            var rootImg = _clonedPanel.GetComponent<Image>();
+            if (rootImg != null && rootImg.sprite != null)
+            {
+                sourceImg = rootImg;
+            }
+            else
+            {
+                // Search direct children for the largest Image with a sprite
+                foreach (Transform child in _clonedPanel.transform)
+                {
+                    var img = child.GetComponent<Image>();
+                    if (img != null && img.sprite != null && img.gameObject.activeSelf)
+                    {
+                        if (sourceImg == null || img.rectTransform.rect.width * img.rectTransform.rect.height >
+                            sourceImg.rectTransform.rect.width * sourceImg.rectTransform.rect.height)
+                            sourceImg = img;
+                    }
+                }
+            }
+
+            _previewPanel = new GameObject("ClassPreview_Panel", typeof(RectTransform), typeof(Image));
+            _previewPanel.transform.SetParent(_canvasGO.transform, false);
+
+            var prevPanelRT = _previewPanel.GetComponent<RectTransform>();
+            prevPanelRT.anchorMin = new Vector2(0.5f, 0.5f);
+            prevPanelRT.anchorMax = new Vector2(0.5f, 0.5f);
+            prevPanelRT.pivot = new Vector2(0.5f, 0.5f);
+            prevPanelRT.sizeDelta = new Vector2(previewWidth, panelHeight);
+            // Place to the right of the class panel, vertically centered
+            float previewX = panelWidth / 2f + gap + previewWidth / 2f;
+            prevPanelRT.anchoredPosition = new Vector2(previewX, 0f);
+
+            var prevPanelImg = _previewPanel.GetComponent<Image>();
+            if (sourceImg != null)
+            {
+                prevPanelImg.sprite = sourceImg.sprite;
+                prevPanelImg.type = sourceImg.type;
+                prevPanelImg.material = sourceImg.material;
+                prevPanelImg.color = sourceImg.color;
+                prevPanelImg.pixelsPerUnitMultiplier = sourceImg.pixelsPerUnitMultiplier;
+            }
+            else
+            {
+                prevPanelImg.color = new Color(0f, 0f, 0f, 0.8f);
+            }
+
+            // ── RawImage inside the preview panel ──
+            var rawImgGO = new GameObject("PreviewImage", typeof(RectTransform));
+            rawImgGO.transform.SetParent(_previewPanel.transform, false);
+            var rawRT = rawImgGO.GetComponent<RectTransform>();
+            rawRT.anchorMin = Vector2.zero;
+            rawRT.anchorMax = Vector2.one;
+            rawRT.offsetMin = new Vector2(10f, 10f);
+            rawRT.offsetMax = new Vector2(-10f, -10f);
+
+            var rawImg = rawImgGO.AddComponent<RawImage>();
+            rawImg.texture = _previewRT;
+            rawImg.raycastTarget = false;
+        }
+
+        /// <summary>
+        /// Creates a clone of the player model for preview, identical to FejdStartup.SetupCharacterPreview.
+        /// The clone is placed far away so only the preview camera sees it.
+        /// </summary>
+        private void SetupPreviewClone()
+        {
+            ClearPreviewClone();
+
+            var player = Player.m_localPlayer;
+            if (player == null) return;
+
+            // Get the player prefab
+            var prefab = ZNetScene.instance?.GetPrefab("Player");
+            if (prefab == null) return;
+
+            // Instantiate without network initialization (same as FejdStartup)
+            ZNetView.m_forceDisableInit = true;
+            _previewClone = Instantiate(prefab, PreviewSpawnPos, Quaternion.identity);
+            ZNetView.m_forceDisableInit = false;
+
+            // Remove physics so the clone doesn't fall
+            var rb = _previewClone.GetComponent<Rigidbody>();
+            if (rb != null) Destroy(rb);
+
+            // Set animators to normal update mode (same as FejdStartup)
+            foreach (var anim in _previewClone.GetComponentsInChildren<Animator>())
+                anim.updateMode = AnimatorUpdateMode.Normal;
+
+            // Copy current player's appearance into the clone
+            var clonePlayer = _previewClone.GetComponent<Player>();
+            if (clonePlayer != null)
+            {
+                // Use a temporary profile to transfer appearance data
+                var tempProfile = new PlayerProfile("_preview", FileHelpers.FileSource.Local);
+                tempProfile.SavePlayerData(player);
+                tempProfile.LoadPlayerData(clonePlayer);
+
+                // Force VisEquipment to create hair/beard/equipment meshes.
+                // CustomUpdate() won't run because m_nview.IsValid() is false on the clone,
+                // so we call UpdateVisuals() directly via reflection.
+                var visEquip = _previewClone.GetComponent<VisEquipment>();
+                if (visEquip != null)
+                {
+                    var updateVisuals = AccessTools.Method(typeof(VisEquipment), "UpdateVisuals");
+                    updateVisuals?.Invoke(visEquip, null);
+                }
+            }
+
+            // Face the clone toward the preview camera (camera is at +Z, so clone faces +Z = 0° rotation)
+            _previewClone.transform.rotation = Quaternion.identity;
+
+            // Force all renderers onto the character layer so only they appear in the preview
+            int charLayer = LayerMask.NameToLayer("character");
+            if (charLayer < 0) charLayer = 9;
+            foreach (var t in _previewClone.GetComponentsInChildren<Transform>(true))
+                t.gameObject.layer = charLayer;
+        }
+
+        private void ClearPreviewClone()
+        {
+            if (_previewClone != null)
+            {
+                Destroy(_previewClone);
+                _previewClone = null;
+            }
+        }
+
+        private void UpdatePreviewCamera()
+        {
+            // Camera position is fixed (set once in CreatePreviewPanel), no per-frame update needed
         }
 
         // ══════════════════════════════════════════
@@ -466,7 +623,6 @@ namespace StartingClassMod
             // Hide all children initially
             HideRequirement(starBox.transform);
 
-            StartingClassPlugin.Log("Repurposed star box as 5th requirement slot.");
         }
 
         // ══════════════════════════════════════════
@@ -833,7 +989,7 @@ namespace StartingClassMod
             if (prefab != null)
             {
                 var drop = prefab.GetComponent<ItemDrop>();
-                if (drop != null)
+                if (drop != null && Localization.instance != null)
                 {
                     string loc = Localization.instance.Localize(drop.m_itemData.m_shared.m_name);
                     if (!string.IsNullOrEmpty(loc) && !loc.StartsWith("["))
@@ -855,3 +1011,5 @@ namespace StartingClassMod
         }
     }
 }
+
+

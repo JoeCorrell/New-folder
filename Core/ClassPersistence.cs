@@ -38,7 +38,6 @@ namespace StartingClassMod
             if (player == null) return;
             player.m_customData[ClassDataKey] = className;
             ClearPending(player);
-            StartingClassPlugin.Log($"Saved class '{className}' for character.");
         }
 
         /// <summary>
@@ -77,7 +76,6 @@ namespace StartingClassMod
             if (player == null) return;
             player.m_customData.Remove(ClassDataKey);
             player.m_customData.Remove(ClassPendingKey);
-            StartingClassPlugin.Log("Cleared all starting class data for character.");
         }
     }
 }

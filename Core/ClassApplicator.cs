@@ -33,9 +33,7 @@ namespace StartingClassMod
 
             // Show a message to the player
             player.Message(MessageHud.MessageType.Center, $"You begin your journey as a {startingClass.Name}!");
-
-            StartingClassPlugin.Log($"Applied class '{startingClass.Name}' to player. " +
-                                   $"Items: {startingClass.Items.Count}, Skill bonuses: {startingClass.SkillBonuses.Count}");
+            StartingClassPlugin.Log($"Applied class '{startingClass.Name}'.");
         }
 
         private static void GrantItems(Player player, StartingClass startingClass)
@@ -70,11 +68,7 @@ namespace StartingClassMod
                     player.GetPlayerID(),
                     player.GetPlayerName());
 
-                if (addedItem != null)
-                {
-                    StartingClassPlugin.Log($"Granted {item.Quantity}x {item.PrefabName}.");
-                }
-                else
+                if (addedItem == null)
                 {
                     // Inventory full - drop item on the ground
                     StartingClassPlugin.LogWarning($"Inventory full, dropping {item.PrefabName} at player position.");
@@ -99,28 +93,16 @@ namespace StartingClassMod
 
             foreach (var bonus in startingClass.SkillBonuses)
             {
-                // Use reflection to access the internal GetSkill method,
-                // or use the public API: RaiseSkill adds XP incrementally.
-                // The most reliable approach is to use the m_skillData dictionary directly.
                 float currentLevel = skills.GetSkillLevel(bonus.SkillType);
-                if (currentLevel < bonus.BonusLevel)
+                if (currentLevel >= bonus.BonusLevel) continue;
+
+                // RaiseSkill adds XP incrementally. Cap iterations to prevent runaway loops.
+                const int maxIterations = 500;
+                for (int i = 0; i < maxIterations; i++)
                 {
-                    // RaiseSkill with a large delta to reach target level.
-                    // Each level requires roughly (level+1)*10 XP, so we use a direct approach.
-                    // We raise the skill incrementally to the target.
-                    float needed = bonus.BonusLevel - currentLevel;
-                    for (int i = 0; i < (int)(needed * 20); i++)
-                    {
-                        skills.RaiseSkill(bonus.SkillType, 1f);
-                        if (skills.GetSkillLevel(bonus.SkillType) >= bonus.BonusLevel)
-                            break;
-                    }
-                    StartingClassPlugin.Log($"Raised {bonus.SkillType} to level {skills.GetSkillLevel(bonus.SkillType):F1} (target: {bonus.BonusLevel}).");
-                }
-                else
-                {
-                    StartingClassPlugin.Log($"Skill {bonus.SkillType} already at level {currentLevel}, " +
-                                           $"skipping bonus of {bonus.BonusLevel}.");
+                    skills.RaiseSkill(bonus.SkillType, 1f);
+                    if (skills.GetSkillLevel(bonus.SkillType) >= bonus.BonusLevel)
+                        break;
                 }
             }
         }

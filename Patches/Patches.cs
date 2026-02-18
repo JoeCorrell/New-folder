@@ -22,11 +22,10 @@ namespace StartingClassMod
         {
             static void Postfix(Player __instance)
             {
-                // Only process the local player
                 if (__instance != Player.m_localPlayer) return;
+                if (StartingClassPlugin.Instance == null) return;
 
                 // Always open the class selection UI on world start (for testing)
-                StartingClassPlugin.Log("Opening class selection UI.");
                 StartingClassPlugin.Instance.ShowClassSelection(false);
             }
         }
@@ -96,25 +95,6 @@ namespace StartingClassMod
         }
 
         /// <summary>
-        /// Patch Player.OnDeath to ensure the class data is not lost on death.
-        /// This is a safety measure - m_customData persists through death already,
-        /// but we log to confirm.
-        /// </summary>
-        [HarmonyPatch(typeof(Player), "OnDeath")]
-        public static class Player_OnDeath_Patch
-        {
-            static void Prefix(Player __instance)
-            {
-                if (__instance != Player.m_localPlayer) return;
-
-                if (ClassPersistence.HasSelectedClass(__instance))
-                {
-                    StartingClassPlugin.Log("Player died. Class data is preserved in custom data.");
-                }
-            }
-        }
-
-        /// <summary>
         /// Patch Game.Logout to close the class selection UI if open during logout.
         /// Prevents lingering UI or state corruption.
         /// </summary>
@@ -159,6 +139,19 @@ namespace StartingClassMod
             {
                 if (!__result && StartingClassPlugin.Instance != null && StartingClassPlugin.Instance.IsClassMenuOpen)
                     __result = true;
+            }
+        }
+
+        /// <summary>
+        /// Close the class selection UI when the inventory is opened.
+        /// Patches InventoryGui.Show so pressing Tab/inventory key dismisses our menu.
+        /// </summary>
+        [HarmonyPatch(typeof(InventoryGui), nameof(InventoryGui.Show))]
+        public static class InventoryGui_Show_Patch
+        {
+            static void Postfix()
+            {
+                StartingClassPlugin.Instance?.HideClassSelection();
             }
         }
     }

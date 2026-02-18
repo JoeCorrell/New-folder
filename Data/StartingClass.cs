@@ -10,16 +10,14 @@ namespace StartingClassMod
     {
         public string Name { get; }
         public string Description { get; }
-        public string IconItemName { get; }
         public List<StartingItem> Items { get; }
         public List<SkillBonus> SkillBonuses { get; }
 
-        public StartingClass(string name, string description, string iconItemName,
+        public StartingClass(string name, string description,
             List<StartingItem> items, List<SkillBonus> skillBonuses)
         {
             Name = name;
             Description = description;
-            IconItemName = iconItemName;
             Items = items;
             SkillBonuses = skillBonuses;
         }
