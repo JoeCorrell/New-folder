@@ -548,7 +548,11 @@ namespace StartingClassMod
 
             // Title → "Choose Your Starting Class"
             if (_titleText != null)
+            {
                 _titleText.text = "Choose Your Starting Class";
+                _titleText.fontSize = Mathf.Max(_titleText.fontSize, 32f);
+                _titleText.enableAutoSizing = false;
+            }
 
             // Stretch the class name label across the full description width so centering works
             // (originally it's offset to make room for the recipe icon, which we hide)
@@ -642,6 +646,7 @@ namespace StartingClassMod
             _previewCamera.farClipPlane = 10f;
             _previewCamera.depth = -2;
             _previewCamera.enabled = false;
+            _previewCamGO.AddComponent<PreviewCameraHelper>();
 
             int charLayer = LayerMask.NameToLayer("character");
             if (charLayer < 0) charLayer = 9;
@@ -1072,13 +1077,19 @@ namespace StartingClassMod
                     btn.onClick.AddListener(() => SelectClass(idx));
                 }
 
-                // Class icon — use the first PreviewEquipment item's icon
+                // Class icon — pinned to the left of the row
+                float iconSize = rowHeight - 8f;
+                float iconPadding = 4f;
+                float textLeftOffset = iconPadding + iconSize + 6f; // space after icon
+
                 var iconTr = element.transform.Find("icon");
                 if (iconTr != null)
                 {
                     var iconImg = iconTr.GetComponent<Image>();
                     Sprite classIcon = null;
-                    if (cls.PreviewEquipment != null && cls.PreviewEquipment.Count > 0)
+                    if (!string.IsNullOrEmpty(cls.IconPrefab))
+                        classIcon = GetItemIcon(cls.IconPrefab);
+                    if (classIcon == null && cls.PreviewEquipment != null && cls.PreviewEquipment.Count > 0)
                         classIcon = GetItemIcon(cls.PreviewEquipment[0]);
                     if (classIcon == null && cls.Items.Count > 0)
                         classIcon = GetItemIcon(cls.Items[0].PrefabName);
@@ -1087,14 +1098,18 @@ namespace StartingClassMod
                     {
                         iconImg.sprite = classIcon;
                         iconImg.color = Color.white;
+                        iconImg.preserveAspect = true;
                         iconTr.gameObject.SetActive(true);
 
-                        // Scale icon to match the taller row
                         var iconRT = iconTr as RectTransform;
                         if (iconRT != null)
                         {
-                            float iconSize = rowHeight - 8f;
+                            // Pin icon to left-center of the row
+                            iconRT.anchorMin = new Vector2(0f, 0.5f);
+                            iconRT.anchorMax = new Vector2(0f, 0.5f);
+                            iconRT.pivot = new Vector2(0f, 0.5f);
                             iconRT.sizeDelta = new Vector2(iconSize, iconSize);
+                            iconRT.anchoredPosition = new Vector2(iconPadding, 0f);
                         }
                     }
                     else
@@ -1103,10 +1118,20 @@ namespace StartingClassMod
                     }
                 }
 
-                // Set class name
+                // Class name — positioned to the right of the icon
                 var nameTr = element.transform.Find("name");
                 if (nameTr != null)
                 {
+                    var nameRT = nameTr as RectTransform;
+                    if (nameRT != null)
+                    {
+                        // Stretch from after the icon to the right edge
+                        nameRT.anchorMin = new Vector2(0f, 0f);
+                        nameRT.anchorMax = new Vector2(1f, 1f);
+                        nameRT.pivot = new Vector2(0.5f, 0.5f);
+                        nameRT.offsetMin = new Vector2(textLeftOffset, 0f);
+                        nameRT.offsetMax = new Vector2(-4f, 0f);
+                    }
                     var nameTxt = nameTr.GetComponent<TMP_Text>();
                     if (nameTxt != null)
                     {
@@ -1114,6 +1139,7 @@ namespace StartingClassMod
                         nameTxt.color = Color.white;
                         nameTxt.enableAutoSizing = false;
                         nameTxt.fontSize = Mathf.Max(nameTxt.fontSize, 24f);
+                        nameTxt.alignment = TextAlignmentOptions.MidlineLeft;
                     }
                 }
 
@@ -1210,11 +1236,11 @@ namespace StartingClassMod
                 string desc = cls.Description;
                 if (cls.SkillBonuses.Count > 0)
                 {
-                    desc += "\n\n<color=#66B3E5>Skill Bonuses:</color>";
+                    desc += "\n\n<color=#8AE58A>Skill Bonuses:</color>";
                     foreach (var bonus in cls.SkillBonuses)
                     {
                         string skillName = FormatPascalCase(bonus.SkillType.ToString());
-                        desc += $"\n  {skillName}  <color=#66B3E5>+{bonus.BonusLevel:0}</color>";
+                        desc += $"\n  {skillName}  <color=#8AE58A>+{bonus.BonusLevel:0}</color>";
                     }
                 }
                 _recipeDescription.text = desc;
@@ -1489,6 +1515,35 @@ namespace StartingClassMod
                 sb.Append(c);
             }
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Attached to the preview camera to disable scene fog and control ambient light
+        /// during rendering, preventing the washed-out look caused by Valheim's environment.
+        /// </summary>
+        private class PreviewCameraHelper : MonoBehaviour
+        {
+            private bool _savedFog;
+            private float _savedAmbientIntensity;
+            private Color _savedAmbientLight;
+
+            void OnPreRender()
+            {
+                _savedFog = RenderSettings.fog;
+                _savedAmbientIntensity = RenderSettings.ambientIntensity;
+                _savedAmbientLight = RenderSettings.ambientLight;
+
+                RenderSettings.fog = false;
+                RenderSettings.ambientIntensity = 0.6f;
+                RenderSettings.ambientLight = new Color(0.5f, 0.5f, 0.55f);
+            }
+
+            void OnPostRender()
+            {
+                RenderSettings.fog = _savedFog;
+                RenderSettings.ambientIntensity = _savedAmbientIntensity;
+                RenderSettings.ambientLight = _savedAmbientLight;
+            }
         }
     }
 }

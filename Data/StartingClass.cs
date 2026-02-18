@@ -14,16 +14,19 @@ namespace StartingClassMod
         public List<SkillBonus> SkillBonuses { get; }
         /// <summary>Prefab names to visually equip on the preview model.</summary>
         public List<string> PreviewEquipment { get; }
+        /// <summary>Prefab name whose icon represents this class in the list.</summary>
+        public string IconPrefab { get; }
 
         public StartingClass(string name, string description,
             List<StartingItem> items, List<SkillBonus> skillBonuses,
-            List<string> previewEquipment = null)
+            List<string> previewEquipment = null, string iconPrefab = null)
         {
             Name = name;
             Description = description;
             Items = items;
             SkillBonuses = skillBonuses;
             PreviewEquipment = previewEquipment ?? new List<string>();
+            IconPrefab = iconPrefab;
         }
     }
 
