@@ -25,8 +25,10 @@ namespace StartingClassMod
                 if (__instance != Player.m_localPlayer) return;
                 if (StartingClassPlugin.Instance == null) return;
 
-                // Always open the class selection UI on world start (for testing)
-                StartingClassPlugin.Instance.ShowClassSelection(false);
+                // Only show for characters that haven't selected a class yet
+                // (or whose selection was interrupted by a crash)
+                if (!ClassPersistence.HasSelectedClass(__instance) || ClassPersistence.IsPending(__instance))
+                    StartingClassPlugin.Instance.ShowClassSelection(false);
             }
         }
 

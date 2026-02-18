@@ -39,6 +39,8 @@ namespace StartingClassMod
         private Scrollbar _recipeScrollbar;
         private ScrollRect _listScrollRect;
         private ScrollRectEnsureVisible _ensureVisible;
+        private ScrollRect _descriptionScrollRect;
+        private Scrollbar _descriptionScrollbar;
 
         // ── Class list elements (instantiated from recipe element prefab) ──
         private readonly List<GameObject> _classElements = new List<GameObject>();
@@ -314,6 +316,34 @@ namespace StartingClassMod
                 _ensureVisible = _recipeListRoot.GetComponentInParent<ScrollRectEnsureVisible>();
             }
 
+            // Find and configure description panel scroll area/scrollbar.
+            if (invGui.m_recipeDecription != null)
+            {
+                var origDescScrollRect = invGui.m_recipeDecription.GetComponentInParent<ScrollRect>();
+                if (origDescScrollRect != null)
+                {
+                    _descriptionScrollRect = FindCloned<ScrollRect>(origRoot, origDescScrollRect.transform);
+                    if (origDescScrollRect.verticalScrollbar != null)
+                        _descriptionScrollbar = FindCloned<Scrollbar>(origRoot, origDescScrollRect.verticalScrollbar.transform);
+                    if (_descriptionScrollRect != null && _descriptionScrollbar == null)
+                        _descriptionScrollbar = _descriptionScrollRect.verticalScrollbar;
+
+                    if (_descriptionScrollRect != null)
+                    {
+                        _descriptionScrollRect.vertical = true;
+                        _descriptionScrollRect.horizontal = false;
+                        _descriptionScrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
+                    }
+
+                    if (_descriptionScrollbar != null)
+                    {
+                        _descriptionScrollbar.gameObject.SetActive(true);
+                        if (_descriptionScrollRect != null)
+                            _descriptionScrollRect.verticalScrollbar = _descriptionScrollbar;
+                    }
+                }
+            }
+
             // Find requirement slots in the clone
             if (invGui.m_recipeRequirementList != null)
             {
@@ -526,9 +556,10 @@ namespace StartingClassMod
                 containerRT.pivot = origRecipeList.pivot;
 
                 // Fill the extra column: right edge at panel edge minus margin,
-                // left edge starts where the original panel content ends
+                // left edge starts past the original panel (with gap for description scrollbar)
                 float rightEdge = totalWidth - margin - 3f;
-                float leftEdge = origPanelWidth - margin;
+                float scrollGap = 4f;
+                float leftEdge = origPanelWidth - margin + scrollGap;
                 containerRT.offsetMin = new Vector2(leftEdge, origRecipeList.offsetMin.y);
                 containerRT.offsetMax = new Vector2(rightEdge, origRecipeList.offsetMax.y);
             }
@@ -566,6 +597,7 @@ namespace StartingClassMod
 
             var rawImg = rawImgGO.AddComponent<RawImage>();
             rawImg.texture = _previewRT;
+            rawImg.color = Color.white;
             rawImg.raycastTarget = false;
 
             // ── Rotation buttons — cloned from the confirm button for matching style ──
@@ -666,37 +698,65 @@ namespace StartingClassMod
         private void CreateRotationButtons(Transform parent)
         {
             if (_craftButton == null) return;
-
-            // Read the confirm button's Y position so we can match it
-            float btnY = 8f;
             var craftRT = _craftButton.transform as RectTransform;
+            float sourceWidth = 0f;
+            float sourceHeight = 0f;
             if (craftRT != null)
-                btnY = craftRT.anchoredPosition.y;
+            {
+                sourceWidth = Mathf.Max(craftRT.rect.width, craftRT.sizeDelta.x);
+                sourceHeight = Mathf.Max(craftRT.rect.height, craftRT.sizeDelta.y);
+            }
+            var sourceSize = new Vector2(
+                sourceWidth > 1f ? sourceWidth : 180f,
+                sourceHeight > 1f ? sourceHeight : 42f
+            );
 
             // Clone the confirm button twice — identical sprite, font, and sizing
             var leftGO = Instantiate(_craftButton.gameObject, parent);
             leftGO.name = "RotateLeft";
-            SetupRotateButton(leftGO, "Left", -1, btnY, true);
+            SetupRotateButton(leftGO, "Left", -1, true, sourceSize);
 
             var rightGO = Instantiate(_craftButton.gameObject, parent);
             rightGO.name = "RotateRight";
-            SetupRotateButton(rightGO, "Right", 1, btnY, false);
+            SetupRotateButton(rightGO, "Right", 1, false, sourceSize);
         }
 
-        private void SetupRotateButton(GameObject btnGO, string label, int direction, float yPos, bool isLeft)
+        private void SetupRotateButton(GameObject btnGO, string label, int direction, bool isLeft, Vector2 sourceSize)
         {
-            // Position: bottom-center of preview, side by side at the same height as the confirm button
             var btnRT = btnGO.GetComponent<RectTransform>();
+
+            // Strip any LayoutElement that could override our positioning
+            var layout = btnGO.GetComponent<LayoutElement>();
+            if (layout != null) Destroy(layout);
+            var animator = btnGO.GetComponent<Animator>();
+            if (animator != null) Destroy(animator);
+
+            // Anchor to bottom-center of the preview container
             btnRT.anchorMin = new Vector2(0.5f, 0f);
             btnRT.anchorMax = new Vector2(0.5f, 0f);
             btnRT.pivot = new Vector2(0.5f, 0.5f);
-            float halfWidth = btnRT.sizeDelta.x * 0.3f;
-            btnRT.sizeDelta = new Vector2(btnRT.sizeDelta.x * 0.6f, btnRT.sizeDelta.y);
-            btnRT.anchoredPosition = new Vector2(isLeft ? -halfWidth - 4f : halfWidth + 4f, -yPos);
+            btnRT.localScale = Vector3.one;
+
+            // Size to 60% of original craft button width, keep height
+            float btnWidth = Mathf.Max(96f, sourceSize.x * 0.6f);
+            float btnHeight = Mathf.Max(32f, sourceSize.y);
+            btnRT.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, btnWidth);
+            btnRT.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, btnHeight);
+
+            // Position side by side, centered, slightly above the panel bottom edge.
+            float halfBtn = btnWidth * 0.5f + 8f;
+            btnRT.anchoredPosition = new Vector2(isLeft ? -halfBtn : halfBtn, 28f);
+            btnGO.SetActive(true);
+            btnGO.transform.SetAsLastSibling();
 
             // Relabel
             var txt = btnGO.GetComponentInChildren<TMP_Text>();
-            if (txt != null) txt.text = label;
+            if (txt != null)
+            {
+                txt.text = label;
+                txt.color = Color.white;
+                txt.enabled = true;
+            }
 
             // Clear old click handler, wire hold-to-rotate via EventTrigger
             var btn = btnGO.GetComponent<Button>();
@@ -704,9 +764,21 @@ namespace StartingClassMod
             {
                 btn.onClick.RemoveAllListeners();
                 btn.interactable = true;
+                btn.onClick.AddListener(() => _previewRotation += direction * 12f);
+                if (btn.targetGraphic != null)
+                    btn.targetGraphic.raycastTarget = true;
             }
 
-            var trigger = btnGO.AddComponent<EventTrigger>();
+            var canvasGroup = btnGO.GetComponent<CanvasGroup>();
+            if (canvasGroup != null)
+            {
+                canvasGroup.alpha = 1f;
+                canvasGroup.interactable = true;
+                canvasGroup.blocksRaycasts = true;
+            }
+
+            var trigger = btnGO.GetComponent<EventTrigger>() ?? btnGO.AddComponent<EventTrigger>();
+            trigger.triggers.Clear();
             int dir = direction;
 
             var downEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerDown };
@@ -1027,6 +1099,8 @@ namespace StartingClassMod
             if (_recipeIcon != null) _recipeIcon.enabled = false;
             if (_recipeName != null) _recipeName.enabled = false;
             if (_recipeDescription != null) _recipeDescription.enabled = false;
+            if (_descriptionScrollbar != null) _descriptionScrollbar.value = 1f;
+            if (_descriptionScrollRect != null) _descriptionScrollRect.verticalNormalizedPosition = 1f;
 
             if (_craftButton != null)
             {
@@ -1074,7 +1148,12 @@ namespace StartingClassMod
                 }
                 _recipeDescription.text = desc;
                 _recipeDescription.enabled = true;
+                _recipeDescription.ForceMeshUpdate();
+                LayoutRebuilder.ForceRebuildLayoutImmediate(_recipeDescription.rectTransform);
             }
+
+            if (_descriptionScrollbar != null) _descriptionScrollbar.value = 1f;
+            if (_descriptionScrollRect != null) _descriptionScrollRect.verticalNormalizedPosition = 1f;
 
             // Confirm button → "Begin as X"
             if (_craftButton != null)
@@ -1293,5 +1372,3 @@ namespace StartingClassMod
         }
     }
 }
-
-
