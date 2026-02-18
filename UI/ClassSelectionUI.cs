@@ -49,6 +49,7 @@ namespace StartingClassMod
         private GameObject _previewClone;
         private Light _previewLight;
         private Light _fillLight;
+        private Light _rimLight;
         private static readonly Vector3 PreviewSpawnPos = new Vector3(10000f, 5000f, 10000f);
 
         // ── Colors ──
@@ -79,6 +80,8 @@ namespace StartingClassMod
                 _previewLight.enabled = true;
             if (_fillLight != null)
                 _fillLight.enabled = true;
+            if (_rimLight != null)
+                _rimLight.enabled = true;
 
             PopulateClassList();
             ClearDetail();
@@ -95,6 +98,8 @@ namespace StartingClassMod
                 _previewLight.enabled = false;
             if (_fillLight != null)
                 _fillLight.enabled = false;
+            if (_rimLight != null)
+                _rimLight.enabled = false;
             ClearPreviewClone();
             if (_canvasGO != null)
                 _canvasGO.SetActive(false);
@@ -254,18 +259,34 @@ namespace StartingClassMod
                 }
             }
 
-            // Widen panel to the right by the list column width (left edge stays in place)
-            float extraWidth = listColumnWidth - 4f;
+            // Widen panel to the right — extra space for the preview column
+            float extraWidth = listColumnWidth + 100f;
             panelRT.sizeDelta = new Vector2(origPanelWidth + extraWidth, panelRT.sizeDelta.y);
             panelRT.anchoredPosition = Vector2.zero;
+
+            // Find the description panel's scrollbar before shifting, so we can skip it
+            // (it's right-pinned and would get pushed too far left otherwise)
+            Transform descScrollbarTransform = null;
+            var earlyDescPanel = _clonedPanel.transform.Find("Decription");
+            if (earlyDescPanel != null)
+            {
+                var earlyDescSR = earlyDescPanel.GetComponentInChildren<ScrollRect>(true);
+                if (earlyDescSR != null && earlyDescSR.verticalScrollbar != null)
+                    descScrollbarTransform = earlyDescSR.verticalScrollbar.transform;
+            }
 
             // Children pinned to the right edge (anchorMin.x ~= 1 && anchorMax.x ~= 1)
             // ride the right edge when the panel widens — shift them back left.
             // Full-stretch backgrounds (0→1) are left alone so they cover the whole panel.
+            // Skip the description scrollbar — it stays with the description panel.
             foreach (RectTransform child in _clonedPanel.transform)
             {
                 if (child.anchorMin.x >= 0.99f && child.anchorMax.x >= 0.99f)
+                {
+                    if (descScrollbarTransform != null && child == descScrollbarTransform)
+                        continue;
                     child.anchoredPosition += new Vector2(-extraWidth, 0f);
+                }
             }
 
 
@@ -366,13 +387,23 @@ namespace StartingClassMod
                     t.gameObject.SetActive(false);
             }
 
-            // Hide scrollbars/scroll elements that aren't part of the class list or description panel
+            // Find the description panel's scrollbar BEFORE the hiding pass
+            // (it may be a sibling of "Decription", not a child, so IsChildOf won't catch it)
             var descPanelGO = _clonedPanel.transform.Find("Decription")?.gameObject;
+            Scrollbar _descScrollbar = null;
+            if (descPanelGO != null)
+            {
+                var descSR = descPanelGO.GetComponentInChildren<ScrollRect>(true);
+                if (descSR != null)
+                    _descScrollbar = descSR.verticalScrollbar;
+            }
+
+            // Hide all scrollbars/scroll elements except class list's and description's
             var listScrollGO = _listScrollRect != null ? _listScrollRect.gameObject : null;
             foreach (var sb in _clonedPanel.GetComponentsInChildren<Scrollbar>(true))
             {
                 if (sb == _recipeScrollbar) continue;
-                if (descPanelGO != null && sb.transform.IsChildOf(descPanelGO.transform)) continue;
+                if (sb == _descScrollbar) continue;
                 sb.gameObject.SetActive(false);
             }
             foreach (Transform t in _clonedPanel.GetComponentsInChildren<Transform>(true))
@@ -383,9 +414,18 @@ namespace StartingClassMod
                     if (listScrollGO != null && t.IsChildOf(listScrollGO.transform)) continue;
                     if (t.gameObject == listScrollGO) continue;
                     if (t.GetComponent<Scrollbar>() == _recipeScrollbar) continue;
+                    if (_descScrollbar != null && t.GetComponent<Scrollbar>() == _descScrollbar) continue;
+                    if (_descScrollbar != null && t.IsChildOf(_descScrollbar.transform)) continue;
                     if (descPanelGO != null && t.IsChildOf(descPanelGO.transform)) continue;
                     t.gameObject.SetActive(false);
                 }
+            }
+
+            // Ensure the description scrollbar is active and functional
+            if (_descScrollbar != null)
+            {
+                _descScrollbar.gameObject.SetActive(true);
+                _descScrollbar.enabled = true;
             }
 
             // ══════════════════════════════════════════
@@ -444,7 +484,7 @@ namespace StartingClassMod
             ClearDetail();
 
             // ── Player preview (camera view in the right column) ──
-            CreatePreviewPanel(invGui, extraWidth);
+            CreatePreviewPanel(invGui, extraWidth, origPanelWidth);
 
             _canvasGO.SetActive(false);
             _uiBuilt = true;
@@ -454,7 +494,7 @@ namespace StartingClassMod
         //  PLAYER PREVIEW (camera in the right column of the widened panel)
         // ══════════════════════════════════════════
 
-        private void CreatePreviewPanel(InventoryGui invGui, float columnWidth)
+        private void CreatePreviewPanel(InventoryGui invGui, float columnWidth, float origPanelWidth)
         {
             // Match the RT aspect ratio to the actual display area to avoid squishing.
             // Column is columnWidth wide, panel height from sizeDelta.
@@ -479,36 +519,52 @@ namespace StartingClassMod
 
             int charLayer = LayerMask.NameToLayer("character");
             if (charLayer < 0) charLayer = 9;
-            _previewCamera.cullingMask = 1 << charLayer;
+            int charNetLayer = LayerMask.NameToLayer("character_net");
+            int previewMask = (1 << charLayer);
+            if (charNetLayer >= 0) previewMask |= (1 << charNetLayer);
+            _previewCamera.cullingMask = previewMask;
 
             Vector3 cloneCenter = PreviewSpawnPos + Vector3.up * 0.85f;
-            _previewCamGO.transform.position = cloneCenter + Vector3.forward * 5.7f;
+            _previewCamGO.transform.position = cloneCenter + Vector3.forward * 5.0f;
             _previewCamGO.transform.LookAt(cloneCenter);
 
-            // ── Key light (point light — local, won't affect game world) ──
-            // Soft warm light similar to the character select screen
+            // ── 3-point lighting rig for natural character rendering ──
+
+            // Key light — warm, upper-right-front (main illumination)
             var lightGO = new GameObject("ClassPreview_Light");
             DontDestroyOnLoad(lightGO);
-            lightGO.transform.position = PreviewSpawnPos + new Vector3(1f, 2f, 3f);
+            lightGO.transform.position = PreviewSpawnPos + new Vector3(2f, 3f, 2f);
             _previewLight = lightGO.AddComponent<Light>();
             _previewLight.type = LightType.Point;
-            _previewLight.color = new Color(1f, 0.92f, 0.82f);
-            _previewLight.intensity = 1.1f;
+            _previewLight.color = new Color(1f, 0.95f, 0.88f);
+            _previewLight.intensity = 1.4f;
             _previewLight.range = 15f;
-            _previewLight.cullingMask = 1 << charLayer;
+            _previewLight.cullingMask = previewMask;
             _previewLight.enabled = false;
 
-            // ── Fill light (softer, from opposite side) ──
+            // Fill light — cool, left side (softens shadows)
             var fillGO = new GameObject("ClassPreview_FillLight");
             DontDestroyOnLoad(fillGO);
-            fillGO.transform.position = PreviewSpawnPos + new Vector3(-1.5f, 1f, 2f);
+            fillGO.transform.position = PreviewSpawnPos + new Vector3(-2f, 1.5f, 1.5f);
             _fillLight = fillGO.AddComponent<Light>();
             _fillLight.type = LightType.Point;
-            _fillLight.color = new Color(0.75f, 0.82f, 0.95f);
-            _fillLight.intensity = 0.5f;
+            _fillLight.color = new Color(0.8f, 0.85f, 1f);
+            _fillLight.intensity = 0.8f;
             _fillLight.range = 15f;
-            _fillLight.cullingMask = 1 << charLayer;
+            _fillLight.cullingMask = previewMask;
             _fillLight.enabled = false;
+
+            // Rim light — behind and above (edge separation from background)
+            var rimGO = new GameObject("ClassPreview_RimLight");
+            DontDestroyOnLoad(rimGO);
+            rimGO.transform.position = PreviewSpawnPos + new Vector3(0f, 2.5f, -2f);
+            _rimLight = rimGO.AddComponent<Light>();
+            _rimLight.type = LightType.Point;
+            _rimLight.color = new Color(0.9f, 0.92f, 1f);
+            _rimLight.intensity = 1.2f;
+            _rimLight.range = 15f;
+            _rimLight.cullingMask = previewMask;
+            _rimLight.enabled = false;
 
             // ── Background panel using Decription panel's style ──
             var descPanel = _clonedPanel.transform.Find("Decription");
@@ -532,9 +588,10 @@ namespace StartingClassMod
                 containerRT.anchorMax = origRecipeList.anchorMax;
                 containerRT.pivot = origRecipeList.pivot;
 
-                // Right edge at panel width - margin, left edge = right edge - columnWidth + margin*2
+                // Fill the extra column: right edge at panel edge minus margin,
+                // left edge starts where the original panel content ends
                 float rightEdge = totalWidth - margin - 3f;
-                float leftEdge = rightEdge - (origRecipeList.offsetMax.x - origRecipeList.offsetMin.x) - 3f;
+                float leftEdge = origPanelWidth - margin;
                 containerRT.offsetMin = new Vector2(leftEdge, origRecipeList.offsetMin.y);
                 containerRT.offsetMax = new Vector2(rightEdge, origRecipeList.offsetMax.y);
             }
