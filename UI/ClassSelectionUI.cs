@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using HarmonyLib;
 using TMPro;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace StartingClassMod
@@ -56,8 +55,7 @@ namespace StartingClassMod
 
         // ── Preview rotation ──
         private float _previewRotation;
-        private int _rotateDirection; // -1 = left, 0 = none, 1 = right
-        private const float RotateSpeed = 90f; // degrees per second
+        private const float AutoRotateSpeed = 12f; // degrees per second
 
         // ── Colors ──
         static readonly Color ColOverlay = new Color(0f, 0f, 0f, 0.65f);
@@ -82,7 +80,6 @@ namespace StartingClassMod
 
             SetupPreviewClone();
             _previewRotation = 0f;
-            _rotateDirection = 0;
             if (_previewCamera != null)
                 _previewCamera.enabled = true;
             if (_previewLight != null)
@@ -101,7 +98,6 @@ namespace StartingClassMod
                 _previewCamera.enabled = false;
             if (_previewLight != null)
                 _previewLight.enabled = false;
-            _rotateDirection = 0;
             ClearPreviewClone();
             if (_canvasGO != null)
                 _canvasGO.SetActive(false);
@@ -121,11 +117,8 @@ namespace StartingClassMod
             if (_isFromCommand && Input.GetKeyDown(KeyCode.Escape))
                 Close();
 
-            // Smooth camera rotation while button is held
-            if (_rotateDirection != 0)
-            {
-                _previewRotation += _rotateDirection * RotateSpeed * Time.deltaTime;
-            }
+            // Slow automatic camera rotation.
+            _previewRotation += AutoRotateSpeed * Time.deltaTime;
 
             // Update preview camera position
             UpdatePreviewCamera();
@@ -251,30 +244,67 @@ namespace StartingClassMod
             panelRT.anchorMax = new Vector2(0.5f, 0.5f);
             panelRT.pivot = new Vector2(0.5f, 0.5f);
 
-            // Compute the list column width from the ScrollRect's anchors and the panel's sizeDelta.
-            // rect.width is unreliable before a layout pass, but sizeDelta and anchors are immediate.
+            // Derive source column widths from the cloned panel before any resizing.
             float origPanelWidth = panelRT.sizeDelta.x;
+            var clonedListPanel = _clonedPanel.transform.Find("RecipeList") as RectTransform;
+            var clonedDescPanel = _clonedPanel.transform.Find("Decription") as RectTransform;
+
+            float descriptionColumnWidth = 260f; // fallback
+            if (clonedDescPanel != null)
+            {
+                descriptionColumnWidth = GetRectWidth(clonedDescPanel, origPanelWidth);
+                if (descriptionColumnWidth <= 10f) descriptionColumnWidth = 260f;
+            }
+
             float listColumnWidth = 200f; // fallback
-            if (invGui.m_recipeListRoot != null)
+            if (clonedListPanel != null)
+            {
+                listColumnWidth = GetRectWidth(clonedListPanel, origPanelWidth);
+                if (listColumnWidth <= 10f) listColumnWidth = 200f;
+            }
+            else if (invGui.m_recipeListRoot != null)
             {
                 var scrollRect = invGui.m_recipeListRoot.GetComponentInParent<ScrollRect>();
                 if (scrollRect != null)
                 {
                     var scrollRT = scrollRect.transform as RectTransform;
-                    // width = anchorSpan * parentWidth + sizeDelta.x
                     float anchorSpan = scrollRT.anchorMax.x - scrollRT.anchorMin.x;
                     listColumnWidth = anchorSpan * origPanelWidth + scrollRT.sizeDelta.x;
-                    if (listColumnWidth <= 10f) listColumnWidth = 200f; // sanity check
+                    if (listColumnWidth <= 10f) listColumnWidth = 200f;
                 }
             }
 
-            // Widen panel to the right — extra space for the preview column
-            float extraWidth = listColumnWidth + 100f;
-            panelRT.sizeDelta = new Vector2(origPanelWidth + extraWidth, panelRT.sizeDelta.y);
+            // Match class-list panel width to the description panel width.
+            float listWidthIncrease = 0f;
+            if (clonedListPanel != null && descriptionColumnWidth > listColumnWidth + 1f)
+            {
+                float originalListRight = GetRectRight(clonedListPanel, origPanelWidth);
+                listWidthIncrease = descriptionColumnWidth - listColumnWidth;
+                SetRectWidthKeepingLeft(clonedListPanel, origPanelWidth, descriptionColumnWidth);
+
+                // Shift right-side content so the widened list panel does not overlap it.
+                foreach (RectTransform child in _clonedPanel.transform)
+                {
+                    if (child == clonedListPanel) continue;
+                    bool fullStretch = child.anchorMin.x <= 0.01f && child.anchorMax.x >= 0.99f;
+                    if (fullStretch) continue;
+
+                    float childLeft = GetRectLeft(child, origPanelWidth);
+                    if (childLeft >= originalListRight - 2f)
+                        ShiftRectX(child, listWidthIncrease);
+                }
+            }
+
+            // Widen panel to fit a third column (preview) equal to description width.
+            float previewColumnWidth = descriptionColumnWidth;
+            float previewPadding = 24f;
+            float contentBaseWidth = origPanelWidth + listWidthIncrease;
+            float panelAddedWidth = listWidthIncrease + previewColumnWidth + previewPadding;
+            panelRT.sizeDelta = new Vector2(origPanelWidth + panelAddedWidth, panelRT.sizeDelta.y);
             panelRT.anchoredPosition = Vector2.zero;
 
             // Fix children that ride or stretch to the right edge when the panel widens:
-            // 1. Right-PINNED (anchorMin.x ~= 1 && anchorMax.x ~= 1): shift left by extraWidth
+            // 1. Right-PINNED (anchorMin.x ~= 1 && anchorMax.x ~= 1): shift left by panelAddedWidth
             // 2. Right-STRETCHED (anchorMax.x ~= 1 but anchorMin.x is partway): clamp right edge
             // Full-stretch backgrounds (anchorMin.x ~= 0 → anchorMax.x ~= 1) stay as-is.
             foreach (RectTransform child in _clonedPanel.transform)
@@ -284,12 +314,12 @@ namespace StartingClassMod
 
                 if (pinnedRight)
                 {
-                    child.anchoredPosition += new Vector2(-extraWidth, 0f);
+                    child.anchoredPosition += new Vector2(-panelAddedWidth, 0f);
                 }
                 else if (stretchedRight)
                 {
                     // Clamp the right edge so it doesn't stretch into the preview column
-                    child.offsetMax += new Vector2(-extraWidth, 0f);
+                    child.offsetMax += new Vector2(-panelAddedWidth, 0f);
                 }
             }
 
@@ -426,9 +456,12 @@ namespace StartingClassMod
             // ══════════════════════════════════════════
             if (_recipeListRoot != null)
             {
-                _recipeListRoot.pivot = new Vector2(_recipeListRoot.pivot.x, 1f);
-                _recipeListRoot.anchorMin = new Vector2(_recipeListRoot.anchorMin.x, 1f);
-                _recipeListRoot.anchorMax = new Vector2(_recipeListRoot.anchorMax.x, 1f);
+                float rightInset = (_recipeScrollbar != null) ? 22f : 2f;
+                _recipeListRoot.pivot = new Vector2(0.5f, 1f);
+                _recipeListRoot.anchorMin = new Vector2(0f, 1f);
+                _recipeListRoot.anchorMax = new Vector2(1f, 1f);
+                _recipeListRoot.offsetMin = new Vector2(2f, _recipeListRoot.offsetMin.y);
+                _recipeListRoot.offsetMax = new Vector2(-rightInset, _recipeListRoot.offsetMax.y);
                 _recipeListRoot.anchoredPosition = new Vector2(_recipeListRoot.anchoredPosition.x, 0f);
             }
 
@@ -477,7 +510,7 @@ namespace StartingClassMod
             ClearDetail();
 
             // ── Player preview (camera view in the right column) ──
-            CreatePreviewPanel(invGui, extraWidth, origPanelWidth);
+            CreatePreviewPanel(invGui, previewColumnWidth, contentBaseWidth);
 
             _canvasGO.SetActive(false);
             _uiBuilt = true;
@@ -487,7 +520,7 @@ namespace StartingClassMod
         //  PLAYER PREVIEW (camera in the right column of the widened panel)
         // ══════════════════════════════════════════
 
-        private void CreatePreviewPanel(InventoryGui invGui, float columnWidth, float origPanelWidth)
+        private void CreatePreviewPanel(InventoryGui invGui, float columnWidth, float contentBaseWidth)
         {
             // Match the RT aspect ratio to the actual display area to avoid squishing.
             // Column is columnWidth wide, panel height from sizeDelta.
@@ -555,11 +588,13 @@ namespace StartingClassMod
                 containerRT.anchorMax = origRecipeList.anchorMax;
                 containerRT.pivot = origRecipeList.pivot;
 
-                // Fill the extra column: right edge at panel edge minus margin,
-                // left edge starts past the original panel (with gap for description scrollbar)
-                float rightEdge = totalWidth - margin - 3f;
+                // Keep a small gap from the description panel and match width to class-list column.
                 float scrollGap = 4f;
-                float leftEdge = origPanelWidth - margin + scrollGap;
+                float leftEdge = contentBaseWidth - margin + scrollGap;
+                float rightEdge = leftEdge + columnWidth;
+                float maxRightEdge = totalWidth - margin - 3f;
+                if (rightEdge > maxRightEdge)
+                    rightEdge = maxRightEdge;
                 containerRT.offsetMin = new Vector2(leftEdge, origRecipeList.offsetMin.y);
                 containerRT.offsetMax = new Vector2(rightEdge, origRecipeList.offsetMax.y);
             }
@@ -600,8 +635,6 @@ namespace StartingClassMod
             rawImg.color = Color.white;
             rawImg.raycastTarget = false;
 
-            // ── Rotation buttons — cloned from the confirm button for matching style ──
-            CreateRotationButtons(containerGO.transform);
         }
 
         /// <summary>
@@ -693,105 +726,6 @@ namespace StartingClassMod
             Vector3 offset = new Vector3(Mathf.Sin(rad), 0f, Mathf.Cos(rad)) * 5.0f;
             _previewCamGO.transform.position = cloneCenter + offset;
             _previewCamGO.transform.LookAt(cloneCenter);
-        }
-
-        private void CreateRotationButtons(Transform parent)
-        {
-            if (_craftButton == null) return;
-            var craftRT = _craftButton.transform as RectTransform;
-            float sourceWidth = 0f;
-            float sourceHeight = 0f;
-            if (craftRT != null)
-            {
-                sourceWidth = Mathf.Max(craftRT.rect.width, craftRT.sizeDelta.x);
-                sourceHeight = Mathf.Max(craftRT.rect.height, craftRT.sizeDelta.y);
-            }
-            var sourceSize = new Vector2(
-                sourceWidth > 1f ? sourceWidth : 180f,
-                sourceHeight > 1f ? sourceHeight : 42f
-            );
-
-            // Clone the confirm button twice — identical sprite, font, and sizing
-            var leftGO = Instantiate(_craftButton.gameObject, parent);
-            leftGO.name = "RotateLeft";
-            SetupRotateButton(leftGO, "Left", -1, true, sourceSize);
-
-            var rightGO = Instantiate(_craftButton.gameObject, parent);
-            rightGO.name = "RotateRight";
-            SetupRotateButton(rightGO, "Right", 1, false, sourceSize);
-        }
-
-        private void SetupRotateButton(GameObject btnGO, string label, int direction, bool isLeft, Vector2 sourceSize)
-        {
-            var btnRT = btnGO.GetComponent<RectTransform>();
-
-            // Strip any LayoutElement that could override our positioning
-            var layout = btnGO.GetComponent<LayoutElement>();
-            if (layout != null) Destroy(layout);
-            var animator = btnGO.GetComponent<Animator>();
-            if (animator != null) Destroy(animator);
-
-            // Anchor to bottom-center of the preview container
-            btnRT.anchorMin = new Vector2(0.5f, 0f);
-            btnRT.anchorMax = new Vector2(0.5f, 0f);
-            btnRT.pivot = new Vector2(0.5f, 0.5f);
-            btnRT.localScale = Vector3.one;
-
-            // Size to 60% of original craft button width, keep height
-            float btnWidth = Mathf.Max(96f, sourceSize.x * 0.6f);
-            float btnHeight = Mathf.Max(32f, sourceSize.y);
-            btnRT.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, btnWidth);
-            btnRT.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, btnHeight);
-
-            // Position side by side, centered, slightly above the panel bottom edge.
-            float halfBtn = btnWidth * 0.5f + 8f;
-            btnRT.anchoredPosition = new Vector2(isLeft ? -halfBtn : halfBtn, 28f);
-            btnGO.SetActive(true);
-            btnGO.transform.SetAsLastSibling();
-
-            // Relabel
-            var txt = btnGO.GetComponentInChildren<TMP_Text>();
-            if (txt != null)
-            {
-                txt.text = label;
-                txt.color = Color.white;
-                txt.enabled = true;
-            }
-
-            // Clear old click handler, wire hold-to-rotate via EventTrigger
-            var btn = btnGO.GetComponent<Button>();
-            if (btn != null)
-            {
-                btn.onClick.RemoveAllListeners();
-                btn.interactable = true;
-                btn.onClick.AddListener(() => _previewRotation += direction * 12f);
-                if (btn.targetGraphic != null)
-                    btn.targetGraphic.raycastTarget = true;
-            }
-
-            var canvasGroup = btnGO.GetComponent<CanvasGroup>();
-            if (canvasGroup != null)
-            {
-                canvasGroup.alpha = 1f;
-                canvasGroup.interactable = true;
-                canvasGroup.blocksRaycasts = true;
-            }
-
-            var trigger = btnGO.GetComponent<EventTrigger>() ?? btnGO.AddComponent<EventTrigger>();
-            trigger.triggers.Clear();
-            int dir = direction;
-
-            var downEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerDown };
-            downEntry.callback.AddListener(_ => _rotateDirection = dir);
-            trigger.triggers.Add(downEntry);
-
-            var upEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerUp };
-            upEntry.callback.AddListener(_ => _rotateDirection = 0);
-            trigger.triggers.Add(upEntry);
-
-            var exitEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
-            exitEntry.callback.AddListener(_ => _rotateDirection = 0);
-            trigger.triggers.Add(exitEntry);
         }
 
         /// <summary>
@@ -979,8 +913,14 @@ namespace StartingClassMod
             var descPanel = _clonedPanel.transform.Find("Decription");
             Image descImg = descPanel != null ? descPanel.GetComponent<Image>() : null;
 
-            float gap = 4f;
-            float spacing = _recipeListSpace + gap;
+            var templateRT = invGui.m_recipeElementPrefab.transform as RectTransform;
+            float templateHeight = 32f;
+            if (templateRT != null)
+                templateHeight = Mathf.Max(24f, Mathf.Max(templateRT.rect.height, templateRT.sizeDelta.y));
+
+            float rowHeight = Mathf.Max(templateHeight * 1.25f, templateHeight + 10f);
+            float gap = 6f;
+            float spacing = rowHeight + gap;
 
             for (int i = 0; i < _classes.Count; i++)
             {
@@ -992,8 +932,14 @@ namespace StartingClassMod
                 element.SetActive(true);
                 element.name = "ClassElement_" + cls.Name;
 
-                // Position with gap between each entry
+                // Bigger, wider class-list entry buttons.
                 var elemRT = element.transform as RectTransform;
+                elemRT.anchorMin = new Vector2(0f, 1f);
+                elemRT.anchorMax = new Vector2(1f, 1f);
+                elemRT.pivot = new Vector2(0.5f, 1f);
+                elemRT.sizeDelta = new Vector2(elemRT.sizeDelta.x, rowHeight);
+                elemRT.offsetMin = new Vector2(2f, elemRT.offsetMin.y);
+                elemRT.offsetMax = new Vector2(-2f, elemRT.offsetMax.y);
                 elemRT.anchoredPosition = new Vector2(0f, i * -spacing);
 
                 // Style background to match the dark description panel
@@ -1045,6 +991,8 @@ namespace StartingClassMod
                     {
                         nameTxt.text = cls.Name;
                         nameTxt.color = Color.white;
+                        nameTxt.enableAutoSizing = false;
+                        nameTxt.fontSize = Mathf.Max(nameTxt.fontSize, 24f);
                     }
                 }
 
@@ -1060,7 +1008,9 @@ namespace StartingClassMod
             }
 
             // Set content height for scrolling
-            float contentHeight = _classes.Count * spacing;
+            float contentHeight = (_classes.Count > 0)
+                ? ((_classes.Count - 1) * spacing + rowHeight)
+                : rowHeight;
             _recipeListRoot.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, contentHeight);
 
             // Reset scroll to top
@@ -1334,6 +1284,34 @@ namespace StartingClassMod
         // ══════════════════════════════════════════
         //  VALHEIM DATA LOOKUPS
         // ══════════════════════════════════════════
+
+        private static float GetRectLeft(RectTransform rt, float parentWidth)
+        {
+            return rt.anchorMin.x * parentWidth + rt.offsetMin.x;
+        }
+
+        private static float GetRectRight(RectTransform rt, float parentWidth)
+        {
+            return rt.anchorMax.x * parentWidth + rt.offsetMax.x;
+        }
+
+        private static float GetRectWidth(RectTransform rt, float parentWidth)
+        {
+            return GetRectRight(rt, parentWidth) - GetRectLeft(rt, parentWidth);
+        }
+
+        private static void SetRectWidthKeepingLeft(RectTransform rt, float parentWidth, float targetWidth)
+        {
+            float left = GetRectLeft(rt, parentWidth);
+            float right = left + targetWidth;
+            rt.offsetMax = new Vector2(right - rt.anchorMax.x * parentWidth, rt.offsetMax.y);
+        }
+
+        private static void ShiftRectX(RectTransform rt, float deltaX)
+        {
+            rt.offsetMin = new Vector2(rt.offsetMin.x + deltaX, rt.offsetMin.y);
+            rt.offsetMax = new Vector2(rt.offsetMax.x + deltaX, rt.offsetMax.y);
+        }
 
         private static Sprite GetItemIcon(string prefabName)
         {
