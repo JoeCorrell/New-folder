@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using HarmonyLib;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace StartingClassMod
@@ -47,10 +48,14 @@ namespace StartingClassMod
         private GameObject _previewCamGO;
         private Camera _previewCamera;
         private GameObject _previewClone;
+        private GameObject _previewLightGO;
         private Light _previewLight;
-        private Light _fillLight;
-        private Light _rimLight;
         private static readonly Vector3 PreviewSpawnPos = new Vector3(10000f, 5000f, 10000f);
+
+        // ── Preview rotation ──
+        private float _previewRotation;
+        private int _rotateDirection; // -1 = left, 0 = none, 1 = right
+        private const float RotateSpeed = 90f; // degrees per second
 
         // ── Colors ──
         static readonly Color ColOverlay = new Color(0f, 0f, 0f, 0.65f);
@@ -74,14 +79,12 @@ namespace StartingClassMod
             _isVisible = true;
 
             SetupPreviewClone();
+            _previewRotation = 0f;
+            _rotateDirection = 0;
             if (_previewCamera != null)
                 _previewCamera.enabled = true;
             if (_previewLight != null)
                 _previewLight.enabled = true;
-            if (_fillLight != null)
-                _fillLight.enabled = true;
-            if (_rimLight != null)
-                _rimLight.enabled = true;
 
             PopulateClassList();
             ClearDetail();
@@ -96,10 +99,7 @@ namespace StartingClassMod
                 _previewCamera.enabled = false;
             if (_previewLight != null)
                 _previewLight.enabled = false;
-            if (_fillLight != null)
-                _fillLight.enabled = false;
-            if (_rimLight != null)
-                _rimLight.enabled = false;
+            _rotateDirection = 0;
             ClearPreviewClone();
             if (_canvasGO != null)
                 _canvasGO.SetActive(false);
@@ -119,6 +119,12 @@ namespace StartingClassMod
             if (_isFromCommand && Input.GetKeyDown(KeyCode.Escape))
                 Close();
 
+            // Smooth camera rotation while button is held
+            if (_rotateDirection != 0)
+            {
+                _previewRotation += _rotateDirection * RotateSpeed * Time.deltaTime;
+            }
+
             // Update preview camera position
             UpdatePreviewCamera();
 
@@ -131,6 +137,7 @@ namespace StartingClassMod
             if (_previewCamera != null) _previewCamera.enabled = false;
             ClearPreviewClone();
             if (_previewCamGO != null) Destroy(_previewCamGO);
+            if (_previewLightGO != null) Destroy(_previewLightGO);
             if (_previewRT != null) { _previewRT.Release(); Destroy(_previewRT); }
             if (_canvasGO != null) Destroy(_canvasGO);
         }
@@ -264,28 +271,23 @@ namespace StartingClassMod
             panelRT.sizeDelta = new Vector2(origPanelWidth + extraWidth, panelRT.sizeDelta.y);
             panelRT.anchoredPosition = Vector2.zero;
 
-            // Find the description panel's scrollbar before shifting, so we can skip it
-            // (it's right-pinned and would get pushed too far left otherwise)
-            Transform descScrollbarTransform = null;
-            var earlyDescPanel = _clonedPanel.transform.Find("Decription");
-            if (earlyDescPanel != null)
-            {
-                var earlyDescSR = earlyDescPanel.GetComponentInChildren<ScrollRect>(true);
-                if (earlyDescSR != null && earlyDescSR.verticalScrollbar != null)
-                    descScrollbarTransform = earlyDescSR.verticalScrollbar.transform;
-            }
-
-            // Children pinned to the right edge (anchorMin.x ~= 1 && anchorMax.x ~= 1)
-            // ride the right edge when the panel widens — shift them back left.
-            // Full-stretch backgrounds (0→1) are left alone so they cover the whole panel.
-            // Skip the description scrollbar — it stays with the description panel.
+            // Fix children that ride or stretch to the right edge when the panel widens:
+            // 1. Right-PINNED (anchorMin.x ~= 1 && anchorMax.x ~= 1): shift left by extraWidth
+            // 2. Right-STRETCHED (anchorMax.x ~= 1 but anchorMin.x is partway): clamp right edge
+            // Full-stretch backgrounds (anchorMin.x ~= 0 → anchorMax.x ~= 1) stay as-is.
             foreach (RectTransform child in _clonedPanel.transform)
             {
-                if (child.anchorMin.x >= 0.99f && child.anchorMax.x >= 0.99f)
+                bool pinnedRight = child.anchorMin.x >= 0.99f && child.anchorMax.x >= 0.99f;
+                bool stretchedRight = child.anchorMax.x >= 0.99f && child.anchorMin.x >= 0.01f && child.anchorMin.x < 0.99f;
+
+                if (pinnedRight)
                 {
-                    if (descScrollbarTransform != null && child == descScrollbarTransform)
-                        continue;
                     child.anchoredPosition += new Vector2(-extraWidth, 0f);
+                }
+                else if (stretchedRight)
+                {
+                    // Clamp the right edge so it doesn't stretch into the preview column
+                    child.offsetMax += new Vector2(-extraWidth, 0f);
                 }
             }
 
@@ -387,46 +389,7 @@ namespace StartingClassMod
                     t.gameObject.SetActive(false);
             }
 
-            // Find the description panel's scrollbar BEFORE the hiding pass
-            // (it may be a sibling of "Decription", not a child, so IsChildOf won't catch it)
-            var descPanelGO = _clonedPanel.transform.Find("Decription")?.gameObject;
-            Scrollbar _descScrollbar = null;
-            if (descPanelGO != null)
-            {
-                var descSR = descPanelGO.GetComponentInChildren<ScrollRect>(true);
-                if (descSR != null)
-                    _descScrollbar = descSR.verticalScrollbar;
-            }
-
-            // Hide all scrollbars/scroll elements except class list's and description's
-            var listScrollGO = _listScrollRect != null ? _listScrollRect.gameObject : null;
-            foreach (var sb in _clonedPanel.GetComponentsInChildren<Scrollbar>(true))
-            {
-                if (sb == _recipeScrollbar) continue;
-                if (sb == _descScrollbar) continue;
-                sb.gameObject.SetActive(false);
-            }
-            foreach (Transform t in _clonedPanel.GetComponentsInChildren<Transform>(true))
-            {
-                if (t.name.IndexOf("scroll", System.StringComparison.OrdinalIgnoreCase) >= 0
-                    || t.name.IndexOf("Scrollbar", System.StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    if (listScrollGO != null && t.IsChildOf(listScrollGO.transform)) continue;
-                    if (t.gameObject == listScrollGO) continue;
-                    if (t.GetComponent<Scrollbar>() == _recipeScrollbar) continue;
-                    if (_descScrollbar != null && t.GetComponent<Scrollbar>() == _descScrollbar) continue;
-                    if (_descScrollbar != null && t.IsChildOf(_descScrollbar.transform)) continue;
-                    if (descPanelGO != null && t.IsChildOf(descPanelGO.transform)) continue;
-                    t.gameObject.SetActive(false);
-                }
-            }
-
-            // Ensure the description scrollbar is active and functional
-            if (_descScrollbar != null)
-            {
-                _descScrollbar.gameObject.SetActive(true);
-                _descScrollbar.enabled = true;
-            }
+            // All scrollbars in the clone (recipe list + description) are wanted — no hiding needed.
 
             // ══════════════════════════════════════════
             //  Ensure recipe list root anchors to top for proper alignment
@@ -528,43 +491,17 @@ namespace StartingClassMod
             _previewCamGO.transform.position = cloneCenter + Vector3.forward * 5.0f;
             _previewCamGO.transform.LookAt(cloneCenter);
 
-            // ── 3-point lighting rig for natural character rendering ──
-
-            // Key light — warm, upper-right-front (main illumination)
-            var lightGO = new GameObject("ClassPreview_Light");
-            DontDestroyOnLoad(lightGO);
-            lightGO.transform.position = PreviewSpawnPos + new Vector3(2f, 3f, 2f);
-            _previewLight = lightGO.AddComponent<Light>();
-            _previewLight.type = LightType.Point;
-            _previewLight.color = new Color(1f, 0.95f, 0.88f);
-            _previewLight.intensity = 1.4f;
-            _previewLight.range = 15f;
+            // ── Single directional light — clean neutral illumination like FejdStartup ──
+            _previewLightGO = new GameObject("ClassPreview_Light");
+            DontDestroyOnLoad(_previewLightGO);
+            _previewLightGO.transform.position = PreviewSpawnPos + new Vector3(0f, 3f, 2f);
+            _previewLightGO.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+            _previewLight = _previewLightGO.AddComponent<Light>();
+            _previewLight.type = LightType.Directional;
+            _previewLight.color = new Color(1f, 0.98f, 0.95f);
+            _previewLight.intensity = 1.1f;
             _previewLight.cullingMask = previewMask;
             _previewLight.enabled = false;
-
-            // Fill light — cool, left side (softens shadows)
-            var fillGO = new GameObject("ClassPreview_FillLight");
-            DontDestroyOnLoad(fillGO);
-            fillGO.transform.position = PreviewSpawnPos + new Vector3(-2f, 1.5f, 1.5f);
-            _fillLight = fillGO.AddComponent<Light>();
-            _fillLight.type = LightType.Point;
-            _fillLight.color = new Color(0.8f, 0.85f, 1f);
-            _fillLight.intensity = 0.8f;
-            _fillLight.range = 15f;
-            _fillLight.cullingMask = previewMask;
-            _fillLight.enabled = false;
-
-            // Rim light — behind and above (edge separation from background)
-            var rimGO = new GameObject("ClassPreview_RimLight");
-            DontDestroyOnLoad(rimGO);
-            rimGO.transform.position = PreviewSpawnPos + new Vector3(0f, 2.5f, -2f);
-            _rimLight = rimGO.AddComponent<Light>();
-            _rimLight.type = LightType.Point;
-            _rimLight.color = new Color(0.9f, 0.92f, 1f);
-            _rimLight.intensity = 1.2f;
-            _rimLight.range = 15f;
-            _rimLight.cullingMask = previewMask;
-            _rimLight.enabled = false;
 
             // ── Background panel using Decription panel's style ──
             var descPanel = _clonedPanel.transform.Find("Decription");
@@ -630,6 +567,9 @@ namespace StartingClassMod
             var rawImg = rawImgGO.AddComponent<RawImage>();
             rawImg.texture = _previewRT;
             rawImg.raycastTarget = false;
+
+            // ── Rotation buttons — cloned from the confirm button for matching style ──
+            CreateRotationButtons(containerGO.transform);
         }
 
         /// <summary>
@@ -649,12 +589,26 @@ namespace StartingClassMod
 
             // Instantiate without network initialization (same as FejdStartup)
             ZNetView.m_forceDisableInit = true;
-            _previewClone = Instantiate(prefab, PreviewSpawnPos, Quaternion.identity);
-            ZNetView.m_forceDisableInit = false;
+            try
+            {
+                _previewClone = Instantiate(prefab, PreviewSpawnPos, Quaternion.identity);
+            }
+            finally
+            {
+                ZNetView.m_forceDisableInit = false;
+            }
 
             // Remove physics so the clone doesn't fall
             var rb = _previewClone.GetComponent<Rigidbody>();
             if (rb != null) Destroy(rb);
+
+            // Disable game-logic MonoBehaviours on the clone to prevent NullRef spam
+            // (the clone has no ZDO, so Player/Humanoid/Character Update loops would fail)
+            foreach (var mb in _previewClone.GetComponentsInChildren<MonoBehaviour>(true))
+            {
+                if (mb is VisEquipment) continue;    // keep for equipment rendering
+                mb.enabled = false;
+            }
 
             // Set animators to normal update mode (same as FejdStartup)
             foreach (var anim in _previewClone.GetComponentsInChildren<Animator>())
@@ -664,14 +618,14 @@ namespace StartingClassMod
             var clonePlayer = _previewClone.GetComponent<Player>();
             if (clonePlayer != null)
             {
-                // Use a temporary profile to transfer appearance data
-                var tempProfile = new PlayerProfile("_preview", FileHelpers.FileSource.Local);
+                // Temporarily enable Player to load appearance data, then disable again
+                clonePlayer.enabled = true;
+                var tempProfile = new PlayerProfile("_preview_tmp", FileHelpers.FileSource.Local);
                 tempProfile.SavePlayerData(player);
                 tempProfile.LoadPlayerData(clonePlayer);
+                clonePlayer.enabled = false;
 
-                // Force VisEquipment to create hair/beard/equipment meshes.
-                // CustomUpdate() won't run because m_nview.IsValid() is false on the clone,
-                // so we call UpdateVisuals() directly via reflection.
+                // Force VisEquipment to create hair/beard/equipment meshes
                 var visEquip = _previewClone.GetComponent<VisEquipment>();
                 if (visEquip != null)
                 {
@@ -701,7 +655,71 @@ namespace StartingClassMod
 
         private void UpdatePreviewCamera()
         {
-            // Camera position is fixed (set once in CreatePreviewPanel), no per-frame update needed
+            if (_previewCamGO == null) return;
+            Vector3 cloneCenter = PreviewSpawnPos + Vector3.up * 0.85f;
+            float rad = _previewRotation * Mathf.Deg2Rad;
+            Vector3 offset = new Vector3(Mathf.Sin(rad), 0f, Mathf.Cos(rad)) * 5.0f;
+            _previewCamGO.transform.position = cloneCenter + offset;
+            _previewCamGO.transform.LookAt(cloneCenter);
+        }
+
+        private void CreateRotationButtons(Transform parent)
+        {
+            if (_craftButton == null) return;
+
+            // Read the confirm button's Y position so we can match it
+            float btnY = 8f;
+            var craftRT = _craftButton.transform as RectTransform;
+            if (craftRT != null)
+                btnY = craftRT.anchoredPosition.y;
+
+            // Clone the confirm button twice — identical sprite, font, and sizing
+            var leftGO = Instantiate(_craftButton.gameObject, parent);
+            leftGO.name = "RotateLeft";
+            SetupRotateButton(leftGO, "Left", -1, btnY, true);
+
+            var rightGO = Instantiate(_craftButton.gameObject, parent);
+            rightGO.name = "RotateRight";
+            SetupRotateButton(rightGO, "Right", 1, btnY, false);
+        }
+
+        private void SetupRotateButton(GameObject btnGO, string label, int direction, float yPos, bool isLeft)
+        {
+            // Position: bottom-center of preview, side by side at the same height as the confirm button
+            var btnRT = btnGO.GetComponent<RectTransform>();
+            btnRT.anchorMin = new Vector2(0.5f, 0f);
+            btnRT.anchorMax = new Vector2(0.5f, 0f);
+            btnRT.pivot = new Vector2(0.5f, 0.5f);
+            float halfWidth = btnRT.sizeDelta.x * 0.3f;
+            btnRT.sizeDelta = new Vector2(btnRT.sizeDelta.x * 0.6f, btnRT.sizeDelta.y);
+            btnRT.anchoredPosition = new Vector2(isLeft ? -halfWidth - 4f : halfWidth + 4f, -yPos);
+
+            // Relabel
+            var txt = btnGO.GetComponentInChildren<TMP_Text>();
+            if (txt != null) txt.text = label;
+
+            // Clear old click handler, wire hold-to-rotate via EventTrigger
+            var btn = btnGO.GetComponent<Button>();
+            if (btn != null)
+            {
+                btn.onClick.RemoveAllListeners();
+                btn.interactable = true;
+            }
+
+            var trigger = btnGO.AddComponent<EventTrigger>();
+            int dir = direction;
+
+            var downEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerDown };
+            downEntry.callback.AddListener(_ => _rotateDirection = dir);
+            trigger.triggers.Add(downEntry);
+
+            var upEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerUp };
+            upEntry.callback.AddListener(_ => _rotateDirection = 0);
+            trigger.triggers.Add(upEntry);
+
+            var exitEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
+            exitEntry.callback.AddListener(_ => _rotateDirection = 0);
+            trigger.triggers.Add(exitEntry);
         }
 
         /// <summary>
@@ -923,10 +941,28 @@ namespace StartingClassMod
                     btn.onClick.AddListener(() => SelectClass(idx));
                 }
 
-                // Hide icon (not needed)
+                // Class icon — use the first PreviewEquipment item's icon
                 var iconTr = element.transform.Find("icon");
                 if (iconTr != null)
-                    iconTr.gameObject.SetActive(false);
+                {
+                    var iconImg = iconTr.GetComponent<Image>();
+                    Sprite classIcon = null;
+                    if (cls.PreviewEquipment != null && cls.PreviewEquipment.Count > 0)
+                        classIcon = GetItemIcon(cls.PreviewEquipment[0]);
+                    if (classIcon == null && cls.Items.Count > 0)
+                        classIcon = GetItemIcon(cls.Items[0].PrefabName);
+
+                    if (iconImg != null && classIcon != null)
+                    {
+                        iconImg.sprite = classIcon;
+                        iconImg.color = Color.white;
+                        iconTr.gameObject.SetActive(true);
+                    }
+                    else
+                    {
+                        iconTr.gameObject.SetActive(false);
+                    }
+                }
 
                 // Set class name
                 var nameTr = element.transform.Find("name");
@@ -1143,6 +1179,7 @@ namespace StartingClassMod
 
         private void ConfirmSelection()
         {
+            if (!_isVisible) return;
             if (_selectedIndex < 0 || _selectedIndex >= _classes.Count) return;
 
             var player = Player.m_localPlayer;

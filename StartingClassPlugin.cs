@@ -27,6 +27,12 @@ namespace StartingClassMod
         {
             if (Player.m_localPlayer == null) return;
 
+            // Don't toggle while typing in chat, console, or other text fields
+            if (Console.IsVisible() || Chat.instance?.HasFocus() == true)
+                return;
+            if (TextInput.IsVisible())
+                return;
+
             // Toggle class UI with Z key or RB+X on controller
             bool keyboardToggle = Input.GetKeyDown(KeyCode.Z);
             bool controllerToggle = ZInput.GetButton("JoyTabRight") && ZInput.GetButtonDown("JoyButtonX");

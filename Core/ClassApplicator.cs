@@ -70,14 +70,14 @@ namespace StartingClassMod
 
                 if (addedItem == null)
                 {
-                    // Inventory full - drop item on the ground
+                    // Inventory full - drop item using the player's drop method (network-safe)
                     StartingClassPlugin.LogWarning($"Inventory full, dropping {item.PrefabName} at player position.");
-                    var dropped = Object.Instantiate(prefab, player.transform.position + Vector3.up, Quaternion.identity);
-                    var droppedItem = dropped.GetComponent<ItemDrop>();
-                    if (droppedItem != null)
-                    {
-                        droppedItem.m_itemData.m_stack = item.Quantity;
-                    }
+                    // Create a temporary ItemData to drop
+                    var tempItem = itemDrop.m_itemData.Clone();
+                    tempItem.m_stack = item.Quantity;
+                    ItemDrop.DropItem(tempItem, item.Quantity,
+                        player.transform.position + player.transform.forward + Vector3.up,
+                        player.transform.rotation);
                 }
             }
         }
