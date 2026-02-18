@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace StartingClassMod
@@ -21,6 +22,18 @@ namespace StartingClassMod
 
             // Mark as pending before we start applying (crash safety)
             ClassPersistence.SetPending(player);
+
+            // On command-based re-selection, clear inventory to prevent item duplication
+            if (isFromCommand)
+            {
+                var inventory = player.GetInventory();
+                if (inventory != null)
+                {
+                    var items = new List<ItemDrop.ItemData>(inventory.GetAllItems());
+                    foreach (var item in items)
+                        inventory.RemoveItem(item);
+                }
+            }
 
             // Grant starting items
             GrantItems(player, startingClass);

@@ -16,10 +16,13 @@ namespace StartingClassMod
         public List<string> PreviewEquipment { get; }
         /// <summary>Prefab name whose icon represents this class in the list.</summary>
         public string IconPrefab { get; }
+        /// <summary>Structured ability data for the skill tree UI.</summary>
+        public List<ClassAbility> Abilities { get; }
 
         public StartingClass(string name, string description,
             List<StartingItem> items, List<SkillBonus> skillBonuses,
-            List<string> previewEquipment = null, string iconPrefab = null)
+            List<string> previewEquipment = null, string iconPrefab = null,
+            List<ClassAbility> abilities = null)
         {
             Name = name;
             Description = description;
@@ -27,6 +30,7 @@ namespace StartingClassMod
             SkillBonuses = skillBonuses;
             PreviewEquipment = previewEquipment ?? new List<string>();
             IconPrefab = iconPrefab;
+            Abilities = abilities ?? new List<ClassAbility>();
         }
     }
 
@@ -51,6 +55,22 @@ namespace StartingClassMod
         {
             SkillType = skillType;
             BonusLevel = bonusLevel;
+        }
+    }
+
+    public class ClassAbility
+    {
+        public string Name { get; }
+        public string Description { get; }
+        public bool IsPassive { get; }
+        public int PointCost { get; }
+
+        public ClassAbility(string name, string description, bool isPassive, int pointCost = 0)
+        {
+            Name = name;
+            Description = description;
+            IsPassive = isPassive;
+            PointCost = pointCost;
         }
     }
 }
