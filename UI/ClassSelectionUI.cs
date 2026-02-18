@@ -451,6 +451,34 @@ namespace StartingClassMod
 
             // All scrollbars in the clone (recipe list + description) are wanted — no hiding needed.
 
+            // Force the left class-list panel to match the description panel width.
+            var listPanelRT = _clonedPanel.transform.Find("RecipeList") as RectTransform;
+            var descPanelRT = _clonedPanel.transform.Find("Decription") as RectTransform;
+            if (listPanelRT != null && descPanelRT != null)
+            {
+                float parentWidth = panelRT.sizeDelta.x;
+                float descWidth = GetRectWidth(descPanelRT, parentWidth);
+                float descLeft = GetRectLeft(descPanelRT, parentWidth);
+                float gapToDescription = 4f;
+
+                float targetRight = descLeft - gapToDescription;
+                float targetLeft = targetRight - descWidth;
+                float minLeft = 6f;
+                if (targetLeft < minLeft)
+                {
+                    targetLeft = minLeft;
+                    targetRight = targetLeft + descWidth;
+                }
+
+                SetRectHorizontalEdges(listPanelRT, parentWidth, targetLeft, targetRight);
+
+                // Match the list panel's vertical extent to the description panel
+                listPanelRT.anchorMin = new Vector2(listPanelRT.anchorMin.x, descPanelRT.anchorMin.y);
+                listPanelRT.anchorMax = new Vector2(listPanelRT.anchorMax.x, descPanelRT.anchorMax.y);
+                listPanelRT.offsetMin = new Vector2(listPanelRT.offsetMin.x, descPanelRT.offsetMin.y);
+                listPanelRT.offsetMax = new Vector2(listPanelRT.offsetMax.x, descPanelRT.offsetMax.y);
+            }
+
             // ══════════════════════════════════════════
             //  Ensure recipe list root anchors to top for proper alignment
             // ══════════════════════════════════════════
@@ -462,7 +490,56 @@ namespace StartingClassMod
                 _recipeListRoot.anchorMax = new Vector2(1f, 1f);
                 _recipeListRoot.offsetMin = new Vector2(2f, _recipeListRoot.offsetMin.y);
                 _recipeListRoot.offsetMax = new Vector2(-rightInset, _recipeListRoot.offsetMax.y);
-                _recipeListRoot.anchoredPosition = new Vector2(_recipeListRoot.anchoredPosition.x, 0f);
+                _recipeListRoot.anchoredPosition = new Vector2(0f, 0f);
+            }
+
+            // Ensure every RectTransform between RecipeList and _recipeListRoot stretches to fill.
+            // The ScrollRect's own GO and any intermediate containers may have fixed widths
+            // from the original (narrower) clone that don't update when RecipeList is widened.
+            if (_listScrollRect != null)
+            {
+                var listPanel = _clonedPanel.transform.Find("RecipeList");
+
+                // Force the ScrollRect's own RectTransform to fill RecipeList
+                var scrollRT = _listScrollRect.transform as RectTransform;
+                if (scrollRT != null && scrollRT != listPanel)
+                {
+                    scrollRT.anchorMin = Vector2.zero;
+                    scrollRT.anchorMax = Vector2.one;
+                    scrollRT.offsetMin = Vector2.zero;
+                    scrollRT.offsetMax = Vector2.zero;
+
+                    // Also stretch any intermediate parents between ScrollRect and RecipeList
+                    var parent = scrollRT.parent as RectTransform;
+                    while (parent != null && parent != listPanel)
+                    {
+                        parent.anchorMin = Vector2.zero;
+                        parent.anchorMax = Vector2.one;
+                        parent.offsetMin = Vector2.zero;
+                        parent.offsetMax = Vector2.zero;
+                        parent = parent.parent as RectTransform;
+                    }
+                }
+
+                var viewport = _listScrollRect.viewport;
+                if (viewport != null)
+                {
+                    viewport.anchorMin = new Vector2(0f, 0f);
+                    viewport.anchorMax = new Vector2(1f, 1f);
+                    viewport.offsetMin = new Vector2(2f, 2f);
+                    viewport.offsetMax = new Vector2(-2f, -2f);
+                }
+
+                if (_listScrollRect.content != null)
+                {
+                    var contentRT = _listScrollRect.content;
+                    contentRT.pivot = new Vector2(0.5f, 1f);
+                    contentRT.anchorMin = new Vector2(0f, 1f);
+                    contentRT.anchorMax = new Vector2(1f, 1f);
+                    contentRT.offsetMin = new Vector2(2f, contentRT.offsetMin.y);
+                    contentRT.offsetMax = new Vector2(-2f, contentRT.offsetMax.y);
+                    contentRT.anchoredPosition = new Vector2(0f, 0f);
+                }
             }
 
             // ══════════════════════════════════════════
@@ -511,6 +588,29 @@ namespace StartingClassMod
 
             // ── Player preview (camera view in the right column) ──
             CreatePreviewPanel(invGui, previewColumnWidth, contentBaseWidth);
+
+            // ── Center all three columns within the panel ──
+            var previewContainerRT = _clonedPanel.transform.Find("PreviewContainer") as RectTransform;
+            var finalListPanel = _clonedPanel.transform.Find("RecipeList") as RectTransform;
+            if (previewContainerRT != null && finalListPanel != null)
+            {
+                float pw = panelRT.sizeDelta.x;
+                float leftContent = GetRectLeft(finalListPanel, pw);
+                float rightContent = GetRectRight(previewContainerRT, pw);
+                float totalMargin = pw - (rightContent - leftContent);
+                float targetMargin = totalMargin / 2f;
+                float shiftX = targetMargin - leftContent;
+
+                if (Mathf.Abs(shiftX) > 1f)
+                {
+                    foreach (RectTransform child in _clonedPanel.transform)
+                    {
+                        bool fullStretch = child.anchorMin.x <= 0.01f && child.anchorMax.x >= 0.99f;
+                        if (!fullStretch)
+                            ShiftRectX(child, shiftX);
+                    }
+                }
+            }
 
             _canvasGO.SetActive(false);
             _uiBuilt = true;
@@ -918,9 +1018,20 @@ namespace StartingClassMod
             if (templateRT != null)
                 templateHeight = Mathf.Max(24f, Mathf.Max(templateRT.rect.height, templateRT.sizeDelta.y));
 
-            float rowHeight = Mathf.Max(templateHeight * 1.25f, templateHeight + 10f);
+            float rowHeight = Mathf.Max(templateHeight * 2f, 48f);
             float gap = 6f;
             float spacing = rowHeight + gap;
+
+            // Strip ALL layout components from _recipeListRoot and its parents up to RecipeList.
+            // Must use DestroyImmediate — Destroy() is deferred and layout components would
+            // still override our manual sizing during the current frame's layout pass.
+            StripLayoutComponents(_recipeListRoot.gameObject);
+            if (_listScrollRect != null)
+            {
+                StripLayoutComponents(_listScrollRect.gameObject);
+                if (_listScrollRect.viewport != null)
+                    StripLayoutComponents(_listScrollRect.viewport.gameObject);
+            }
 
             for (int i = 0; i < _classes.Count; i++)
             {
@@ -934,13 +1045,15 @@ namespace StartingClassMod
 
                 // Bigger, wider class-list entry buttons.
                 var elemRT = element.transform as RectTransform;
+                StripLayoutComponents(element);
+
+                // Set anchors and pivot first, then position, then size last
+                // sizeDelta.x = 0 with anchors 0-1 means full parent width
                 elemRT.anchorMin = new Vector2(0f, 1f);
                 elemRT.anchorMax = new Vector2(1f, 1f);
                 elemRT.pivot = new Vector2(0.5f, 1f);
-                elemRT.sizeDelta = new Vector2(elemRT.sizeDelta.x, rowHeight);
-                elemRT.offsetMin = new Vector2(2f, elemRT.offsetMin.y);
-                elemRT.offsetMax = new Vector2(-2f, elemRT.offsetMax.y);
                 elemRT.anchoredPosition = new Vector2(0f, i * -spacing);
+                elemRT.sizeDelta = new Vector2(0f, rowHeight);
 
                 // Style background to match the dark description panel
                 var elemImg = element.GetComponent<Image>();
@@ -975,6 +1088,14 @@ namespace StartingClassMod
                         iconImg.sprite = classIcon;
                         iconImg.color = Color.white;
                         iconTr.gameObject.SetActive(true);
+
+                        // Scale icon to match the taller row
+                        var iconRT = iconTr as RectTransform;
+                        if (iconRT != null)
+                        {
+                            float iconSize = rowHeight - 8f;
+                            iconRT.sizeDelta = new Vector2(iconSize, iconSize);
+                        }
                     }
                     else
                     {
@@ -1285,6 +1406,21 @@ namespace StartingClassMod
         //  VALHEIM DATA LOOKUPS
         // ══════════════════════════════════════════
 
+        /// <summary>
+        /// Immediately destroys all layout-constraining components on a GameObject.
+        /// Uses DestroyImmediate because Destroy() is deferred and layout components
+        /// would still override manual sizing during the current frame.
+        /// </summary>
+        private static void StripLayoutComponents(GameObject go)
+        {
+            foreach (var c in go.GetComponents<LayoutGroup>())
+                DestroyImmediate(c);
+            foreach (var c in go.GetComponents<ContentSizeFitter>())
+                DestroyImmediate(c);
+            foreach (var c in go.GetComponents<LayoutElement>())
+                DestroyImmediate(c);
+        }
+
         private static float GetRectLeft(RectTransform rt, float parentWidth)
         {
             return rt.anchorMin.x * parentWidth + rt.offsetMin.x;
@@ -1311,6 +1447,12 @@ namespace StartingClassMod
         {
             rt.offsetMin = new Vector2(rt.offsetMin.x + deltaX, rt.offsetMin.y);
             rt.offsetMax = new Vector2(rt.offsetMax.x + deltaX, rt.offsetMax.y);
+        }
+
+        private static void SetRectHorizontalEdges(RectTransform rt, float parentWidth, float left, float right)
+        {
+            rt.offsetMin = new Vector2(left - rt.anchorMin.x * parentWidth, rt.offsetMin.y);
+            rt.offsetMax = new Vector2(right - rt.anchorMax.x * parentWidth, rt.offsetMax.y);
         }
 
         private static Sprite GetItemIcon(string prefabName)
