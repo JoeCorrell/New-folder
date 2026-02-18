@@ -23,26 +23,31 @@ namespace StartingClassMod
             // Mark as pending before we start applying (crash safety)
             ClassPersistence.SetPending(player);
 
-            // On command-based re-selection, clear inventory to prevent item duplication
-            if (isFromCommand)
+            try
             {
-                var inventory = player.GetInventory();
-                if (inventory != null)
+                // On command-based re-selection, clear inventory to prevent item duplication
+                if (isFromCommand)
                 {
-                    var items = new List<ItemDrop.ItemData>(inventory.GetAllItems());
-                    foreach (var item in items)
-                        inventory.RemoveItem(item);
+                    var inventory = player.GetInventory();
+                    if (inventory != null)
+                    {
+                        var items = new List<ItemDrop.ItemData>(inventory.GetAllItems());
+                        foreach (var item in items)
+                            inventory.RemoveItem(item);
+                    }
                 }
+
+                // Grant starting items
+                GrantItems(player, startingClass);
+
+                // Apply skill bonuses
+                ApplySkillBonuses(player, startingClass);
             }
-
-            // Grant starting items
-            GrantItems(player, startingClass);
-
-            // Apply skill bonuses
-            ApplySkillBonuses(player, startingClass);
-
-            // Save the class selection (also clears pending flag)
-            ClassPersistence.SaveSelectedClass(player, startingClass.Name);
+            finally
+            {
+                // Save the class selection (also clears pending flag) — always runs even on error
+                ClassPersistence.SaveSelectedClass(player, startingClass.Name);
+            }
 
             // Show a message to the player
             player.Message(MessageHud.MessageType.Center, $"You begin your journey as a {startingClass.Name}!");
@@ -86,7 +91,8 @@ namespace StartingClassMod
                     // Inventory full - drop item using the player's drop method (network-safe)
                     StartingClassPlugin.LogWarning($"Inventory full, dropping {item.PrefabName} at player position.");
                     // Create a temporary ItemData to drop
-                    var tempItem = itemDrop.m_itemData.Clone();
+                    var tempItem = itemDrop.m_itemData?.Clone();
+                    if (tempItem == null) continue;
                     tempItem.m_stack = item.Quantity;
                     ItemDrop.DropItem(tempItem, item.Quantity,
                         player.transform.position + player.transform.forward + Vector3.up,
@@ -111,12 +117,15 @@ namespace StartingClassMod
 
                 // RaiseSkill adds XP incrementally. Cap iterations to prevent runaway loops.
                 const int maxIterations = 500;
+                bool reached = false;
                 for (int i = 0; i < maxIterations; i++)
                 {
                     skills.RaiseSkill(bonus.SkillType, 1f);
                     if (skills.GetSkillLevel(bonus.SkillType) >= bonus.BonusLevel)
-                        break;
+                    { reached = true; break; }
                 }
+                if (!reached)
+                    StartingClassPlugin.LogWarning($"Skill {bonus.SkillType} did not reach target level {bonus.BonusLevel} after {maxIterations} iterations.");
             }
         }
     }

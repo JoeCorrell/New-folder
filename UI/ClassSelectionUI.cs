@@ -32,7 +32,6 @@ namespace StartingClassMod
         private TMP_Text _recipeName;
         private TMP_Text _recipeDescription;
         private RectTransform _recipeListRoot;
-        private float _recipeListSpace;
         private Button _craftButton;
         private TMP_Text _craftButtonLabel;
         private GameObject[] _requirementSlots;
@@ -75,6 +74,9 @@ namespace StartingClassMod
 
         // ── Colors ──
         static readonly Color ColOverlay = new Color(0f, 0f, 0f, 0.65f);
+
+        // ── Cached reflection data for VisEquipment hash resets ──
+        private static System.Reflection.FieldInfo[] _visEquipHashFields;
 
         // ══════════════════════════════════════════
         //  PUBLIC API
@@ -167,6 +169,12 @@ namespace StartingClassMod
                 _descriptionScrollRect.velocity = Vector2.zero;
                 _descScrollResetFrames--;
             }
+
+            // Force-clear EventSystem selection every frame to prevent stale
+            // button highlights. Unity's Button re-selects after onClick handlers,
+            // so a single SetSelectedGameObject(null) in the handler isn't enough.
+            if (EventSystem.current != null && EventSystem.current.currentSelectedGameObject != null)
+                EventSystem.current.SetSelectedGameObject(null);
         }
 
         private void OnDestroy()
@@ -413,8 +421,6 @@ namespace StartingClassMod
             _recipeListRoot    = FindCloned<RectTransform>(origRoot, invGui.m_recipeListRoot);
             _craftButton       = FindCloned<Button>(origRoot, invGui.m_craftButton?.transform);
             _recipeScrollbar   = FindCloned<Scrollbar>(origRoot, invGui.m_recipeListScroll?.transform);
-
-            _recipeListSpace = invGui.m_recipeListSpace;
 
             // Find ScrollRect and ScrollRectEnsureVisible in the clone (for scrollbar + gamepad centering)
             if (_recipeListRoot != null)
@@ -1385,11 +1391,19 @@ namespace StartingClassMod
                 AccessTools.Field(typeof(VisEquipment), kv.Key)?.SetValue(visEquip, kv.Value);
 
             // Reset all tracking hash fields to force UpdateVisuals to re-apply everything
-            foreach (var field in AccessTools.GetDeclaredFields(typeof(VisEquipment)))
+            if (_visEquipHashFields == null)
             {
-                if (field.FieldType == typeof(int) && field.Name.StartsWith("m_current") && field.Name.Contains("Hash"))
-                    field.SetValue(visEquip, -1);
+                var allFields = AccessTools.GetDeclaredFields(typeof(VisEquipment));
+                var hashList = new List<System.Reflection.FieldInfo>();
+                foreach (var f in allFields)
+                {
+                    if (f.FieldType == typeof(int) && f.Name.StartsWith("m_current") && f.Name.Contains("Hash"))
+                        hashList.Add(f);
+                }
+                _visEquipHashFields = hashList.ToArray();
             }
+            foreach (var field in _visEquipHashFields)
+                field.SetValue(visEquip, -1);
 
             AccessTools.Method(typeof(VisEquipment), "UpdateVisuals")?.Invoke(visEquip, null);
 
@@ -1748,7 +1762,7 @@ namespace StartingClassMod
                 if (ability.IsPassive)
                 {
                     // Passive ability — unlocked, green accents
-                    sb.AppendLine("<color=#8AE58A>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
+                    sb.AppendLine("<color=#8AE58A>━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
                     sb.AppendLine($"  <size=20><color=#8AE58A>\u2605 {ability.Name}</color></size>  <size=15><color=#8AE58A>({tierLabel} \u2014 Unlocked)</color></size>");
                     sb.AppendLine($"  <size=17>{ability.Description}</size>");
 
@@ -1764,7 +1778,7 @@ namespace StartingClassMod
                         }
                         sb.AppendLine("</color></size>");
                     }
-                    sb.AppendLine("<color=#8AE58A>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
+                    sb.AppendLine("<color=#8AE58A>━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
                 }
                 else
                 {
@@ -1773,11 +1787,11 @@ namespace StartingClassMod
                     string nameColor = ability.PointCost >= 50 ? "#D4A24E" : "#999999";
                     string descColor = ability.PointCost >= 50 ? "#888888" : "#777777";
 
-                    sb.AppendLine($"<color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
+                    sb.AppendLine($"<color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
                     sb.AppendLine($"  <size=20><color={nameColor}>\u2726 {ability.Name}</color></size>  <size=15><color=#666666>({tierLabel} \u2014 Locked)</color></size>");
                     sb.AppendLine($"  <size=17><color={descColor}>{ability.Description}</color></size>");
                     sb.AppendLine($"  <size=16><color=#D4A24E>\u25C6 Cost: {ability.PointCost} Skill Points</color>  <color=#666666>(You have: 0)</color></size>");
-                    sb.AppendLine($"<color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
+                    sb.AppendLine($"<color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
                 }
 
                 // Connector between abilities
@@ -2101,12 +2115,17 @@ namespace StartingClassMod
                 btn.navigation = new Navigation { mode = Navigation.Mode.None };
             }
 
-            // Set the label text and hide all non-text children (key hints, gamepad prompts)
+            // Hide ALL children except the one containing the label text.
+            // The text may be nested (e.g. inside a container), so check IsChildOf.
             var txt = tabGO.GetComponentInChildren<TMP_Text>(true);
-            GameObject txtGO = txt != null ? txt.gameObject : null;
             foreach (Transform child in tabGO.transform)
             {
-                if (child.gameObject == txtGO) continue;
+                // Keep the child if the TMP_Text lives inside it (or IS it)
+                if (txt != null && (child.gameObject == txt.gameObject || txt.transform.IsChildOf(child)))
+                {
+                    child.gameObject.SetActive(true);
+                    continue;
+                }
                 child.gameObject.SetActive(false);
             }
             if (txt != null)
@@ -2215,7 +2234,7 @@ namespace StartingClassMod
             var prefab = ZNetScene.instance?.GetPrefab(prefabName);
             if (prefab == null) return null;
             var drop = prefab.GetComponent<ItemDrop>();
-            if (drop == null) return null;
+            if (drop == null || drop.m_itemData == null) return null;
             return drop.m_itemData.GetIcon();
         }
 
