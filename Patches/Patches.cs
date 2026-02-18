@@ -146,5 +146,20 @@ namespace StartingClassMod
                 return true;
             }
         }
+
+        /// <summary>
+        /// Make InventoryGui.IsVisible() return true when our class menu is open.
+        /// This tells GameCamera, Hud, and all other game systems that a menu is active,
+        /// which unlocks the cursor, stops camera rotation, and blocks all game input.
+        /// </summary>
+        [HarmonyPatch(typeof(InventoryGui), nameof(InventoryGui.IsVisible))]
+        public static class InventoryGui_IsVisible_Patch
+        {
+            static void Postfix(ref bool __result)
+            {
+                if (!__result && StartingClassPlugin.Instance != null && StartingClassPlugin.Instance.IsClassMenuOpen)
+                    __result = true;
+            }
+        }
     }
 }

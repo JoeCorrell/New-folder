@@ -44,6 +44,9 @@ namespace StartingClassMod
         // ── Close button (added manually for command-based opens) ──
         private GameObject _closeButton;
 
+        // ── Default button color (captured from craft button clone) ──
+        private Color _defaultButtonColor = Color.white;
+
         // ── Colors ──
         static readonly Color ColOverlay = new Color(0f, 0f, 0f, 0.65f);
 
@@ -286,6 +289,11 @@ namespace StartingClassMod
             foreach (var c in _clonedPanel.GetComponentsInChildren<UIGroupHandler>(true))
                 Destroy(c);
 
+            // Hide the gold outline frame
+            var selectedFrame = _clonedPanel.transform.Find("selected_frame");
+            if (selectedFrame != null)
+                selectedFrame.gameObject.SetActive(false);
+
             // ══════════════════════════════════════════
             //  Ensure recipe list root anchors to top for proper alignment
             // ══════════════════════════════════════════
@@ -463,26 +471,51 @@ namespace StartingClassMod
                 if (elem != null) Destroy(elem);
             _classElements.Clear();
 
+
+            // Get the description panel's dark background style
+            var descPanel = _clonedPanel.transform.Find("Decription");
+            Image descImg = descPanel != null ? descPanel.GetComponent<Image>() : null;
+
+            float gap = 4f;
+            float spacing = _recipeListSpace + gap;
+
             for (int i = 0; i < _classes.Count; i++)
             {
                 int idx = i;
                 var cls = _classes[i];
 
-                // Instantiate from original recipe element prefab into our cloned list root
+                // Use the recipe element prefab (correct sizing for the list)
                 var element = Instantiate(invGui.m_recipeElementPrefab, _recipeListRoot);
                 element.SetActive(true);
                 element.name = "ClassElement_" + cls.Name;
 
-                // Position exactly like Valheim does in AddRecipeToList
+                // Position with gap between each entry
                 var elemRT = element.transform as RectTransform;
-                elemRT.anchoredPosition = new Vector2(0f, i * -_recipeListSpace);
+                elemRT.anchoredPosition = new Vector2(0f, i * -spacing);
 
-                // Hide class icon (not needed in class list)
+                // Style background to match the dark description panel
+                var elemImg = element.GetComponent<Image>();
+                if (elemImg != null && descImg != null)
+                {
+                    elemImg.sprite = descImg.sprite;
+                    elemImg.type = descImg.type;
+                    elemImg.color = descImg.color;
+                }
+
+                // Wire up button click
+                var btn = element.GetComponent<Button>();
+                if (btn != null)
+                {
+                    btn.onClick.RemoveAllListeners();
+                    btn.onClick.AddListener(() => SelectClass(idx));
+                }
+
+                // Hide icon (not needed)
                 var iconTr = element.transform.Find("icon");
                 if (iconTr != null)
                     iconTr.gameObject.SetActive(false);
 
-                // Set class name (like recipe name)
+                // Set class name
                 var nameTr = element.transform.Find("name");
                 if (nameTr != null)
                 {
@@ -494,31 +527,19 @@ namespace StartingClassMod
                     }
                 }
 
-                // Hide durability bar (not relevant for classes)
+                // Hide unused children
                 var durTr = element.transform.Find("Durability");
                 if (durTr != null) durTr.gameObject.SetActive(false);
-
-                // Hide quality level (not relevant for classes)
                 var qualTr = element.transform.Find("QualityLevel");
                 if (qualTr != null) qualTr.gameObject.SetActive(false);
-
-                // Set selected highlight to inactive
                 var selTr = element.transform.Find("selected");
                 if (selTr != null) selTr.gameObject.SetActive(false);
-
-                // Wire up button click
-                var btn = element.GetComponent<Button>();
-                if (btn != null)
-                {
-                    btn.onClick.RemoveAllListeners();
-                    btn.onClick.AddListener(() => SelectClass(idx));
-                }
 
                 _classElements.Add(element);
             }
 
-            // Set content height for scrolling (same as Valheim: max of base size or item count * spacing)
-            float contentHeight = _classes.Count * _recipeListSpace;
+            // Set content height for scrolling
+            float contentHeight = _classes.Count * spacing;
             _recipeListRoot.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, contentHeight);
 
             // Reset scroll to top
@@ -542,9 +563,9 @@ namespace StartingClassMod
 
         private void RefreshHighlights()
         {
-            // Toggle "selected" child exactly like Valheim's SetRecipe
             for (int i = 0; i < _classElements.Count; i++)
             {
+                // Toggle "selected" child highlight
                 var selTr = _classElements[i]?.transform.Find("selected");
                 if (selTr != null)
                     selTr.gameObject.SetActive(i == _selectedIndex);
@@ -577,20 +598,9 @@ namespace StartingClassMod
 
             var cls = _classes[_selectedIndex];
 
-            // Class icon → recipe icon
+            // Hide icon (not used for class descriptions)
             if (_recipeIcon != null)
-            {
-                Sprite icon = GetItemIcon(cls.IconItemName);
-                if (icon != null)
-                {
-                    _recipeIcon.sprite = icon;
-                    _recipeIcon.enabled = true;
-                }
-                else
-                {
-                    _recipeIcon.enabled = false;
-                }
-            }
+                _recipeIcon.enabled = false;
 
             // Class name → recipe name
             if (_recipeName != null)

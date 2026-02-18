@@ -8,6 +8,10 @@ namespace StartingClassMod
     /// </summary>
     public static class ClassDefinitions
     {
+        // Rich text section headers for class descriptions
+        private const string PastLife = "<color=#D4A24E>Past Life</color>";
+        private const string Purpose = "<color=#66B3E5>Odin's Purpose</color>";
+
         public static List<StartingClass> GetAll()
         {
             return new List<StartingClass>
@@ -43,7 +47,7 @@ namespace StartingClassMod
         {
             return new StartingClass(
                 "Archer",
-                "A sharpshooter who rains death from afar.\nStarts with a bow, arrows, and keen eyes.",
+                $"{PastLife}\nIn life you loosed arrows until your fingers bled, and even Odin's ravens learned to fear your aim.\n\n{Purpose}\nYour steady hand and sharp eye carry over into death. Nock, draw, and let the tenth world know your name.",
                 "Hammer",
                 PlaceholderItems(),
                 new List<SkillBonus>
@@ -57,7 +61,7 @@ namespace StartingClassMod
         {
             return new StartingClass(
                 "Assassin",
-                "A shadow who strikes without warning.\nStarts with a blade, leather armor, and deadly stealth.",
+                $"{PastLife}\nYou were the blade that struck between heartbeats, the shadow that slipped past locked doors and sleeping guards.\n\n{Purpose}\nValheim's creatures have never known a killer so quiet. Move unseen, strike once, and vanish.",
                 "Hammer",
                 PlaceholderItems(),
                 new List<SkillBonus>
@@ -72,7 +76,7 @@ namespace StartingClassMod
         {
             return new StartingClass(
                 "Blacksmith",
-                "A master of the forge who shapes metal into might.\nStarts with smithing tools and raw materials.",
+                $"{PastLife}\nThe ring of hammer on anvil was your hymn, and molten metal ran through your hands like water through a stream.\n\n{Purpose}\nOdin sends you to the tenth world with the memory of the forge still hot in your palms. Shape this land's ore into something worthy.",
                 "Hammer",
                 PlaceholderItems(),
                 new List<SkillBonus>
@@ -86,7 +90,7 @@ namespace StartingClassMod
         {
             return new StartingClass(
                 "Brute",
-                "A savage warrior who overwhelms foes with raw strength.\nStarts with heavy weapons and thick skin.",
+                $"{PastLife}\nWords were never your weapon. You spoke with fists, with clubs, with anything heavy enough to break bone and end arguments.\n\n{Purpose}\nIn Valheim, the strong devour the weak. Swing hard, swing first, and let the ravens sort out what's left.",
                 "Hammer",
                 PlaceholderItems(),
                 new List<SkillBonus>
@@ -100,7 +104,7 @@ namespace StartingClassMod
         {
             return new StartingClass(
                 "Carpenter",
-                "A master builder and woodworker.\nStarts with building tools, wood, and axe proficiency.",
+                $"{PastLife}\nYou raised longhouses that stood for generations and built ships that crossed the northern seas without leaking a single drop.\n\n{Purpose}\nThe tenth world is nothing but wilderness. Good. You see timber where others see trees, and walls where others see only wind.",
                 "Hammer",
                 PlaceholderItems(),
                 new List<SkillBonus>
@@ -115,7 +119,7 @@ namespace StartingClassMod
         {
             return new StartingClass(
                 "Explorer",
-                "A fearless wanderer of uncharted lands.\nStarts with travel gear and swift legs.",
+                $"{PastLife}\nNo map was ever large enough, no horizon ever final. You chased the edge of the world in life and found only more world beyond it.\n\n{Purpose}\nOdin has granted you the ultimate frontier. Every shore is unknown, every mountain unnamed. Run far, and claim it all.",
                 "Hammer",
                 PlaceholderItems(),
                 new List<SkillBonus>
@@ -129,7 +133,7 @@ namespace StartingClassMod
         {
             return new StartingClass(
                 "Farmer",
-                "A skilled cultivator of the land.\nStarts with farming tools, seeds, and knowledge of the soil.",
+                $"{PastLife}\nWhile warriors chased glory, you fed them. Your hands knew the soil better than any sword, and your harvests kept entire villages alive through the harshest winters.\n\n{Purpose}\nValheim's earth is untamed but fertile. Plant deep, grow strong, and prove that the hand that feeds is mightier than the hand that kills.",
                 "Hammer",
                 PlaceholderItems(),
                 new List<SkillBonus>
@@ -144,7 +148,7 @@ namespace StartingClassMod
         {
             return new StartingClass(
                 "Fisher",
-                "A patient angler and friend of the sea.\nStarts with fishing gear, bait, and enhanced swimming ability.",
+                $"{PastLife}\nThe sea was your hall, the rod your scepter. You pulled life from depths that swallowed lesser folk whole and never once feared the tide.\n\n{Purpose}\nValheim's waters teem with creatures unknown to Midgard. Cast your line and see what bites.",
                 "Hammer",
                 PlaceholderItems(),
                 new List<SkillBonus>
@@ -159,7 +163,7 @@ namespace StartingClassMod
         {
             return new StartingClass(
                 "Forager",
-                "A wanderer who lives off the land.\nStarts with gathered provisions and knowledge of the wilds.",
+                $"{PastLife}\nYou never needed a farm or a market stall. The forest provided mushrooms, the meadows gave berries, and you knew which roots healed and which ones killed.\n\n{Purpose}\nThe wilds of Valheim are generous to those who know where to look. Tread lightly and you will never go hungry.",
                 "Hammer",
                 PlaceholderItems(),
                 new List<SkillBonus>
@@ -174,7 +178,7 @@ namespace StartingClassMod
         {
             return new StartingClass(
                 "Healer",
-                "A devoted mender who restores vitality to the wounded.\nStarts with healing supplies and protective magic.",
+                $"{PastLife}\nWhere others brought death, you brought them back from its door. Your salves closed wounds that should have been graves, and your prayers held the dying to this side of Hel's gate.\n\n{Purpose}\nIn Valheim, death is cheap but survival is precious. Mend what breaks, and you will never stand alone.",
                 "Hammer",
                 PlaceholderItems(),
                 new List<SkillBonus>
@@ -188,7 +192,7 @@ namespace StartingClassMod
         {
             return new StartingClass(
                 "Hunter",
-                "A keen-eyed stalker of prey.\nStarts with a bow, arrows, and the instincts of a predator.",
+                $"{PastLife}\nYou tracked elk through blizzards and brought down boar in pitch darkness, reading the land like others read runes.\n\n{Purpose}\nValheim's beasts are fiercer than anything in Midgard, but a hunter's patience is the same in any world. Stalk, strike, survive.",
                 "Hammer",
                 PlaceholderItems(),
                 new List<SkillBonus>
@@ -203,7 +207,7 @@ namespace StartingClassMod
         {
             return new StartingClass(
                 "Lumberjack",
-                "A rugged woodsman with a sharp axe.\nStarts with chopping tools and a sturdy defense.",
+                $"{PastLife}\nAncient oaks fell to your axe like grass to a scythe. You felled forests that men called impassable and turned timberland into lumber before the sun set.\n\n{Purpose}\nValheim's trees grow thick and tall. Grip your axe and show them what you showed every forest before.",
                 "Hammer",
                 PlaceholderItems(),
                 new List<SkillBonus>
@@ -218,7 +222,7 @@ namespace StartingClassMod
         {
             return new StartingClass(
                 "Miner",
-                "A stalwart excavator of Midgard's depths.\nStarts with mining tools, ore, and defensive skills.",
+                $"{PastLife}\nYou dug where others feared to tread, hauling copper and tin from veins buried deep beneath the mountain's heart.\n\n{Purpose}\nThe tenth world hides its treasures under stone and swamp. Swing your pick and crack it open. The earth always rewards those stubborn enough to keep digging.",
                 "Hammer",
                 PlaceholderItems(),
                 new List<SkillBonus>
@@ -233,7 +237,7 @@ namespace StartingClassMod
         {
             return new StartingClass(
                 "Tank",
-                "An immovable bulwark who shields allies from harm.\nStarts with heavy armor and a sturdy shield.",
+                $"{PastLife}\nYou stood in the shieldwall when others broke and ran. Every scar on your body was earned facing forward, and not one enemy ever saw your back.\n\n{Purpose}\nValheim's horrors hit hard, but you hit the ground harder. Raise your shield and let them come.",
                 "Hammer",
                 PlaceholderItems(),
                 new List<SkillBonus>
@@ -247,7 +251,7 @@ namespace StartingClassMod
         {
             return new StartingClass(
                 "Witch",
-                "A practitioner of dark arts and potent brews.\nStarts with ritual components and cursed knowledge.",
+                $"{PastLife}\nThey whispered your name at hearthside and left offerings at your door. Your brews could curse a jarl's bloodline or save a dying child, depending on your mood.\n\n{Purpose}\nValheim pulses with dark energy that Midgard only dreamed of. Taste it, shape it, and make this world fear the old ways.",
                 "Hammer",
                 PlaceholderItems(),
                 new List<SkillBonus>
@@ -261,7 +265,7 @@ namespace StartingClassMod
         {
             return new StartingClass(
                 "Wizard",
-                "A wielder of arcane knowledge and elemental fury.\nStarts with magical implements and ancient scrolls.",
+                $"{PastLife}\nYou read the runes that others feared to speak aloud and bent the elements to your will with nothing but words and will.\n\n{Purpose}\nThe tenth world crackles with raw seidr. Channel it through staff and stone, and remind every creature here that magic answers to no master but you.",
                 "Hammer",
                 PlaceholderItems(),
                 new List<SkillBonus>
