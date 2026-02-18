@@ -26,6 +26,7 @@ namespace StartingClassMod
         private TextMeshProUGUI _confirmLabel;
         private Transform _equipmentList;
         private Transform _skillsList;
+        private ScrollRect _detailScrollRect;
         private readonly List<Image> _classBtnBGs = new List<Image>();
 
         // ── Cached Valheim visuals ──
@@ -40,21 +41,22 @@ namespace StartingClassMod
         private bool _visualsCached;
 
         // ── Fallback palette ──
-        static readonly Color FallPanelBG    = new Color(0.051f, 0.051f, 0.078f, 0.96f);
-        static readonly Color FallBorder     = new Color(0.851f, 0.722f, 0.361f, 0.55f);
-        static readonly Color FallBtnNormal  = new Color(0.098f, 0.098f, 0.133f);
-        static readonly Color FallBtnSelect  = new Color(0.220f, 0.192f, 0.118f, 0.92f);
-        static readonly Color FallConfirm    = new Color(0.133f, 0.329f, 0.133f);
-        static readonly Color FallClose      = new Color(0.38f, 0.11f, 0.11f);
-        static readonly Color FallIconBG     = new Color(0.10f, 0.10f, 0.14f, 0.8f);
+        static readonly Color FallPanelBG   = new Color(0.051f, 0.051f, 0.078f, 0.96f);
+        static readonly Color FallBorder    = new Color(0.851f, 0.722f, 0.361f, 0.55f);
+        static readonly Color FallBtnNormal = new Color(0.098f, 0.098f, 0.133f);
+        static readonly Color FallBtnSelect = new Color(0.220f, 0.192f, 0.118f, 0.92f);
+        static readonly Color FallConfirm   = new Color(0.133f, 0.329f, 0.133f);
+        static readonly Color FallClose     = new Color(0.38f, 0.11f, 0.11f);
+        static readonly Color FallIconBG    = new Color(0.10f, 0.10f, 0.14f, 0.8f);
 
         // ── Always-used colors ──
-        static readonly Color ColGold        = new Color(0.851f, 0.722f, 0.361f);
-        static readonly Color ColText        = new Color(0.78f, 0.78f, 0.78f);
-        static readonly Color ColTextBright  = new Color(0.95f, 0.93f, 0.88f);
-        static readonly Color ColSkill       = new Color(0.400f, 0.702f, 0.898f);
-        static readonly Color ColSeparator   = new Color(0.851f, 0.722f, 0.361f, 0.30f);
-        static readonly Color ColOverlay     = new Color(0f, 0f, 0f, 0.6f);
+        static readonly Color ColGold       = new Color(0.851f, 0.722f, 0.361f);
+        static readonly Color ColText       = new Color(0.78f, 0.78f, 0.78f);
+        static readonly Color ColTextBright = new Color(0.95f, 0.93f, 0.88f);
+        static readonly Color ColTextDim    = new Color(0.55f, 0.53f, 0.50f);
+        static readonly Color ColSkill      = new Color(0.400f, 0.702f, 0.898f);
+        static readonly Color ColSeparator  = new Color(0.851f, 0.722f, 0.361f, 0.30f);
+        static readonly Color ColOverlay    = new Color(0f, 0f, 0f, 0.65f);
 
         // ══════════════════════════════════════════
         //  PUBLIC API
@@ -126,7 +128,6 @@ namespace StartingClassMod
             var invGui = InventoryGui.instance;
             if (invGui != null)
             {
-                // Panel background: find the largest sliced Image child
                 Image bestPanel = null;
                 float bestArea = 0;
                 foreach (var img in invGui.GetComponentsInChildren<Image>(true))
@@ -149,7 +150,6 @@ namespace StartingClassMod
                     StartingClassPlugin.Log($"Cached panel sprite: '{_panelSprite.name}'");
                 }
 
-                // Button sprites: grab from first button with a real sprite
                 foreach (var btn in invGui.GetComponentsInChildren<Button>(true))
                 {
                     var img = btn.targetGraphic as Image;
@@ -165,14 +165,12 @@ namespace StartingClassMod
             }
 
             // ── Item slot sprite ──
-            // Look for a square sprite used for inventory slots
             if (invGui != null)
             {
                 foreach (var img in invGui.GetComponentsInChildren<Image>(true))
                 {
                     if (img.sprite == null) continue;
                     var r = img.sprite.rect;
-                    // Inventory slots are typically square-ish, small sprites
                     if (r.width > 30 && r.width < 120 && Mathf.Abs(r.width - r.height) < 10
                         && img.sprite.name != "UISprite" && img.sprite.name != "Background"
                         && img.sprite != _panelSprite && img.sprite != _buttonSprite)
@@ -186,7 +184,6 @@ namespace StartingClassMod
             }
 
             // Only mark cached once we've had a chance to grab sprites
-            // If InventoryGui wasn't ready, we'll retry on next BuildUI call
             _visualsCached = invGui != null;
         }
 
@@ -220,30 +217,30 @@ namespace StartingClassMod
 
             // ── Panel frame ──
             var frame = MakeRect("Frame", _canvasGO.transform);
-            AnchorCenter(frame, 720, 640);
+            AnchorCenter(frame, 780, 560);
 
+            Transform contentParent;
             if (_panelSprite != null)
             {
-                // Use the real Valheim panel sprite with its original color
                 var frameImg = AddImage(frame, _panelColor);
                 frameImg.sprite = _panelSprite;
                 frameImg.type = Image.Type.Sliced;
+                contentParent = frame;
             }
             else
             {
-                // Fallback: gold border + dark inner
                 AddImage(frame, FallBorder);
                 var inner = MakeRect("Inner", frame);
                 Stretch(inner, 2);
                 AddImage(inner, FallPanelBG);
+                contentParent = inner;
             }
 
-            // ── Content column ──
-            var contentParent = _panelSprite != null ? frame : frame.GetChild(0);
+            // ── Outer content column ──
             var content = MakeRect("Content", contentParent);
             Stretch(content, 20);
             var vLayout = content.gameObject.AddComponent<VerticalLayoutGroup>();
-            vLayout.spacing = 6;
+            vLayout.spacing = 8;
             vLayout.childForceExpandWidth = true;
             vLayout.childForceExpandHeight = false;
             vLayout.childControlWidth = true;
@@ -251,89 +248,176 @@ namespace StartingClassMod
 
             // ── Title ──
             MakeText(content, "Title", "Choose Your Starting Class",
-                     28, ColGold, TextAlignmentOptions.Center, FontStyles.Bold, 42);
+                     26, ColGold, TextAlignmentOptions.Center, FontStyles.Bold, 34);
+
+            // ── Subtitle ──
+            MakeText(content, "Subtitle", "Select a path to begin your journey in Midgard",
+                     13, ColTextDim, TextAlignmentOptions.Center, FontStyles.Italic, 18);
 
             MakeSeparator(content);
 
-            // ── Class button row ──
-            var btnRow = MakeRect("BtnRow", content);
-            SetLayout(btnRow.gameObject, prefH: 54);
-            var hLayout = btnRow.gameObject.AddComponent<HorizontalLayoutGroup>();
-            hLayout.spacing = 8;
-            hLayout.childForceExpandWidth = true;
-            hLayout.childForceExpandHeight = true;
-            hLayout.childControlWidth = true;
-            hLayout.childControlHeight = true;
+            // ══════════════════════════════════════════
+            //  HORIZONTAL SPLIT: class list (left) | divider | detail (right)
+            // ══════════════════════════════════════════
+            var body = MakeRect("Body", content);
+            SetLayout(body.gameObject, flexH: 1);
+            var bodyHL = body.gameObject.AddComponent<HorizontalLayoutGroup>();
+            bodyHL.spacing = 10;
+            bodyHL.childForceExpandWidth = false;
+            bodyHL.childForceExpandHeight = true;
+            bodyHL.childControlWidth = true;
+            bodyHL.childControlHeight = true;
+
+            // ── LEFT: scrollable class list ──
+            var leftCol = MakeRect("LeftCol", body);
+            SetLayout(leftCol.gameObject, prefW: 220, minW: 220);
+
+            var leftScroll = MakeRect("LeftScroll", leftCol);
+            Stretch(leftScroll);
+            var leftSR = leftScroll.gameObject.AddComponent<ScrollRect>();
+            leftSR.horizontal = false;
+            leftSR.vertical = true;
+            leftSR.movementType = ScrollRect.MovementType.Clamped;
+            leftSR.scrollSensitivity = 30;
+
+            var leftVP = MakeRect("LeftViewport", leftScroll);
+            Stretch(leftVP);
+            leftVP.gameObject.AddComponent<RectMask2D>();
+            leftSR.viewport = leftVP;
+
+            var leftContent = MakeRect("LeftContent", leftVP);
+            leftContent.anchorMin = new Vector2(0, 1);
+            leftContent.anchorMax = new Vector2(1, 1);
+            leftContent.pivot = new Vector2(0.5f, 1);
+            leftSR.content = leftContent;
+
+            var leftCSF = leftContent.gameObject.AddComponent<ContentSizeFitter>();
+            leftCSF.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            var leftVL = leftContent.gameObject.AddComponent<VerticalLayoutGroup>();
+            leftVL.spacing = 4;
+            leftVL.childForceExpandWidth = true;
+            leftVL.childForceExpandHeight = false;
+            leftVL.childControlWidth = true;
+            leftVL.childControlHeight = true;
+            leftVL.padding = new RectOffset(4, 4, 2, 2);
 
             _classBtnBGs.Clear();
             for (int i = 0; i < _classes.Count; i++)
             {
                 int idx = i;
-                MakeClassButton(btnRow, _classes[i], () => SelectClass(idx));
+                MakeClassCard(leftContent, _classes[i], () => SelectClass(idx));
             }
 
-            MakeSeparator(content);
+            // ── DIVIDER ──
+            var divider = MakeRect("Divider", body);
+            SetLayout(divider.gameObject, prefW: 2, minW: 2);
+            var divImg = AddImage(divider, ColGold * new Color(1, 1, 1, 0.6f));
+            divImg.raycastTarget = false;
 
-            // ── Placeholder ──
-            var ph = MakeText(content, "Placeholder",
-                              "Select a class above to view details",
-                              17, ColText, TextAlignmentOptions.Center, FontStyles.Italic, -1);
+            // ── RIGHT: placeholder + detail ──
+            var rightCol = MakeRect("RightCol", body);
+            SetLayout(rightCol.gameObject, flexW: 1);
+            var rightVL = rightCol.gameObject.AddComponent<VerticalLayoutGroup>();
+            rightVL.spacing = 0;
+            rightVL.childForceExpandWidth = true;
+            rightVL.childForceExpandHeight = false;
+            rightVL.childControlWidth = true;
+            rightVL.childControlHeight = true;
+            rightVL.padding = new RectOffset(12, 4, 0, 0);
+
+            // ── Placeholder (shown when no class selected) ──
+            var ph = MakeText(rightCol, "Placeholder",
+                              "Select a class to view details",
+                              16, ColTextDim, TextAlignmentOptions.Center, FontStyles.Italic, -1);
             _placeholder = ph.gameObject;
             SetLayout(_placeholder, flexH: 1);
 
             // ── Detail section ──
-            _detailSection = MakeRect("Detail", content).gameObject;
+            _detailSection = MakeRect("DetailSection", rightCol).gameObject;
             SetLayout(_detailSection, flexH: 1);
-            var dLayout = _detailSection.AddComponent<VerticalLayoutGroup>();
-            dLayout.spacing = 3;
+            var dOuterLayout = _detailSection.AddComponent<VerticalLayoutGroup>();
+            dOuterLayout.spacing = 6;
+            dOuterLayout.childForceExpandWidth = true;
+            dOuterLayout.childForceExpandHeight = false;
+            dOuterLayout.childControlWidth = true;
+            dOuterLayout.childControlHeight = true;
+            dOuterLayout.padding = new RectOffset(4, 4, 4, 4);
+            _detailSection.SetActive(false);
+
+            // ── Scrollable detail content ──
+            var scrollGO = MakeRect("DetailScroll", _detailSection.transform);
+            SetLayout(scrollGO.gameObject, flexH: 1);
+            _detailScrollRect = scrollGO.gameObject.AddComponent<ScrollRect>();
+            _detailScrollRect.horizontal = false;
+            _detailScrollRect.vertical = true;
+            _detailScrollRect.movementType = ScrollRect.MovementType.Clamped;
+            _detailScrollRect.scrollSensitivity = 30;
+
+            var viewport = MakeRect("Viewport", scrollGO);
+            Stretch(viewport);
+            viewport.gameObject.AddComponent<RectMask2D>();
+            _detailScrollRect.viewport = viewport;
+
+            var detailContent = MakeRect("DetailContent", viewport);
+            detailContent.anchorMin = new Vector2(0, 1);
+            detailContent.anchorMax = new Vector2(1, 1);
+            detailContent.pivot = new Vector2(0.5f, 1);
+            _detailScrollRect.content = detailContent;
+
+            var csf = detailContent.gameObject.AddComponent<ContentSizeFitter>();
+            csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            var dLayout = detailContent.gameObject.AddComponent<VerticalLayoutGroup>();
+            dLayout.spacing = 4;
             dLayout.childForceExpandWidth = true;
             dLayout.childForceExpandHeight = false;
             dLayout.childControlWidth = true;
             dLayout.childControlHeight = true;
-            _detailSection.SetActive(false);
+            dLayout.padding = new RectOffset(4, 4, 0, 0);
 
-            _classNameLabel = MakeText(_detailSection.transform, "ClassName", "",
-                                       22, ColGold, TextAlignmentOptions.Left, FontStyles.Bold, 30);
+            _classNameLabel = MakeText(detailContent, "ClassName", "",
+                                       24, ColGold, TextAlignmentOptions.Left, FontStyles.Bold, 32);
 
-            _classDescLabel = MakeText(_detailSection.transform, "ClassDesc", "",
-                                       14, ColText, TextAlignmentOptions.TopLeft, FontStyles.Normal, 40);
+            _classDescLabel = MakeText(detailContent, "ClassDesc", "",
+                                       14, ColText, TextAlignmentOptions.TopLeft, FontStyles.Normal, -1);
             _classDescLabel.textWrappingMode = TextWrappingModes.Normal;
+            _classDescLabel.overflowMode = TextOverflowModes.Overflow;
 
-            SetLayout(MakeRect("Sp1", _detailSection.transform).gameObject, prefH: 2);
+            SetLayout(MakeRect("Sp1", detailContent).gameObject, prefH: 4);
 
-            MakeText(_detailSection.transform, "EqHeader", "Starting Equipment",
-                     16, ColGold, TextAlignmentOptions.Left, FontStyles.Bold, 24);
+            MakeText(detailContent, "EqHeader", "Starting Equipment",
+                     15, ColGold, TextAlignmentOptions.Left, FontStyles.Bold, 24);
 
-            var eqList = MakeRect("EqList", _detailSection.transform);
+            var eqList = MakeRect("EqList", detailContent);
             var eqVL = eqList.gameObject.AddComponent<VerticalLayoutGroup>();
             eqVL.spacing = 2;
             eqVL.childForceExpandWidth = true;
             eqVL.childForceExpandHeight = false;
             eqVL.childControlWidth = true;
             eqVL.childControlHeight = true;
-            eqVL.padding = new RectOffset(6, 0, 0, 0);
+            eqVL.padding = new RectOffset(4, 0, 0, 0);
             _equipmentList = eqList;
 
-            SetLayout(MakeRect("Sp2", _detailSection.transform).gameObject, prefH: 4);
+            SetLayout(MakeRect("Sp2", detailContent).gameObject, prefH: 4);
 
-            MakeText(_detailSection.transform, "SkHeader", "Skill Bonuses",
-                     16, ColGold, TextAlignmentOptions.Left, FontStyles.Bold, 24);
+            MakeText(detailContent, "SkHeader", "Skill Bonuses",
+                     15, ColGold, TextAlignmentOptions.Left, FontStyles.Bold, 24);
 
-            var skList = MakeRect("SkList", _detailSection.transform);
+            var skList = MakeRect("SkList", detailContent);
             var skVL = skList.gameObject.AddComponent<VerticalLayoutGroup>();
             skVL.spacing = 2;
             skVL.childForceExpandWidth = true;
             skVL.childForceExpandHeight = false;
             skVL.childControlWidth = true;
             skVL.childControlHeight = true;
-            skVL.padding = new RectOffset(6, 0, 0, 0);
+            skVL.padding = new RectOffset(4, 0, 0, 0);
             _skillsList = skList;
 
-            SetLayout(MakeRect("SpFlex", _detailSection.transform).gameObject, flexH: 1);
-
+            // ── Confirm button (inside detail, outside scroll) ──
             MakeConfirmButton(_detailSection.transform);
 
-            // ── Close button (command only) ──
+            // ── Close button (command only, below the body) ──
             _closeButton = MakeStyledButton(content, "CloseBtn", "Close", FallClose, 36,
                                             () => Close()).gameObject;
             _closeButton.SetActive(false);
@@ -359,11 +443,11 @@ namespace StartingClassMod
             for (int i = 0; i < _classBtnBGs.Count; i++)
             {
                 bool sel = i == _selectedIndex;
+
                 if (_hasButtonSprite)
                 {
-                    // Tint the Valheim button sprite for selected state
                     _classBtnBGs[i].color = sel
-                        ? new Color(0.9f, 0.8f, 0.5f)
+                        ? new Color(1f, 0.85f, 0.5f)
                         : Color.white;
                 }
                 else
@@ -382,8 +466,12 @@ namespace StartingClassMod
 
             var cls = _classes[_selectedIndex];
             _classNameLabel.text = cls.Name;
-            _classDescLabel.text = cls.Description.Replace("\n", " ");
+            _classDescLabel.text = cls.Description;
             _confirmLabel.text = $"Begin as {cls.Name}";
+
+            // Reset scroll to top when switching classes
+            if (_detailScrollRect != null)
+                _detailScrollRect.normalizedPosition = new Vector2(0, 1);
 
             ClearChildren(_equipmentList);
             foreach (var item in cls.Items)
@@ -414,11 +502,13 @@ namespace StartingClassMod
         //  ELEMENT BUILDERS
         // ══════════════════════════════════════════
 
-        private void MakeClassButton(Transform parent, StartingClass cls, System.Action onClick)
+        private void MakeClassCard(Transform parent, StartingClass cls, System.Action onClick)
         {
-            var rt = MakeRect("Btn_" + cls.Name, parent);
-            Image bg;
+            var rt = MakeRect("Card_" + cls.Name, parent);
+            SetLayout(rt.gameObject, prefH: 52);
 
+            // Background directly on root
+            Image bg;
             if (_hasButtonSprite)
             {
                 bg = AddImage(rt, Color.white);
@@ -443,46 +533,64 @@ namespace StartingClassMod
             {
                 var cb = btn.colors;
                 cb.normalColor = Color.white;
-                cb.highlightedColor = new Color(1.6f, 1.5f, 1.3f);
-                cb.pressedColor = new Color(1.3f, 1.2f, 1.1f);
+                cb.highlightedColor = new Color(1.5f, 1.4f, 1.2f);
+                cb.pressedColor = new Color(1.2f, 1.1f, 1.05f);
                 cb.fadeDuration = 0.08f;
                 btn.colors = cb;
             }
             btn.onClick.AddListener(() => onClick());
 
-            // Button content: icon + label
-            var row = MakeRect("BtnContent", rt);
-            Stretch(row);
-            var hl = row.gameObject.AddComponent<HorizontalLayoutGroup>();
-            hl.spacing = 6;
+            // Horizontal layout: icon | name
+            var cardContent = MakeRect("CardContent", rt);
+            Stretch(cardContent);
+            var hl = cardContent.gameObject.AddComponent<HorizontalLayoutGroup>();
+            hl.spacing = 8;
             hl.childForceExpandWidth = false;
             hl.childForceExpandHeight = false;
             hl.childControlWidth = true;
             hl.childControlHeight = true;
-            hl.childAlignment = TextAnchor.MiddleCenter;
+            hl.childAlignment = TextAnchor.MiddleLeft;
             hl.padding = new RectOffset(8, 8, 4, 4);
+
+            // Icon with square background
+            var iconSlot = MakeRect("IconSlot", cardContent);
+            SetLayout(iconSlot.gameObject, prefW: 36, prefH: 36, minW: 36, minH: 36);
+
+            if (_slotSprite != null)
+            {
+                var slotImg = AddImage(iconSlot, _slotColor);
+                slotImg.sprite = _slotSprite;
+                slotImg.type = Image.Type.Sliced;
+                slotImg.raycastTarget = false;
+            }
+            else
+            {
+                var slotImg = AddImage(iconSlot, FallIconBG);
+                slotImg.raycastTarget = false;
+            }
 
             Sprite icon = GetItemIcon(cls.IconItemName);
             if (icon != null)
             {
-                var iconGO = MakeRect("Icon", row);
-                var iconImg = AddImage(iconGO, Color.white);
+                var iconRT = MakeRect("Icon", iconSlot);
+                Stretch(iconRT, 2);
+                var iconImg = AddImage(iconRT, Color.white);
                 iconImg.sprite = icon;
                 iconImg.preserveAspect = true;
                 iconImg.raycastTarget = false;
-                SetLayout(iconGO.gameObject, prefW: 32, prefH: 32);
             }
 
-            var label = MakeText(row, "Label", cls.Name,
-                                 16, ColTextBright, TextAlignmentOptions.Center, FontStyles.Bold, -1);
+            var label = MakeText(cardContent, "Label", cls.Name,
+                                 14, ColTextBright, TextAlignmentOptions.Left, FontStyles.Bold, -1);
             label.raycastTarget = false;
             SetLayout(label.gameObject, flexW: 1);
         }
 
         private void MakeConfirmButton(Transform parent)
         {
-            var rt = MakeStyledButton(parent, "ConfirmBtn", "Begin as ...", FallConfirm, 48,
+            var rt = MakeStyledButton(parent, "ConfirmBtn", "Begin as ...", FallConfirm, 54,
                                       () => ConfirmSelection());
+            SetLayout(rt.gameObject, minH: 44);
             _confirmLabel = rt.GetComponentInChildren<TextMeshProUGUI>();
         }
 
@@ -523,7 +631,7 @@ namespace StartingClassMod
             }
             btn.onClick.AddListener(() => onClick());
 
-            var txt = MakeText(rt, "Label", label, height > 40 ? 19 : 15,
+            var txt = MakeText(rt, "Label", label, height > 40 ? 18 : 15,
                                ColGold, TextAlignmentOptions.Center, FontStyles.Bold, -1);
             Stretch(txt.rectTransform);
             txt.raycastTarget = false;
@@ -534,7 +642,7 @@ namespace StartingClassMod
         private void MakeItemRow(Transform parent, StartingItem item)
         {
             var row = MakeRect("Item_" + item.PrefabName, parent);
-            SetLayout(row.gameObject, prefH: 36);
+            SetLayout(row.gameObject, prefH: 34);
             var hl = row.gameObject.AddComponent<HorizontalLayoutGroup>();
             hl.spacing = 8;
             hl.childForceExpandWidth = false;
@@ -543,9 +651,9 @@ namespace StartingClassMod
             hl.childControlHeight = true;
             hl.childAlignment = TextAnchor.MiddleLeft;
 
-            // Icon slot (uses inventory slot sprite if available)
+            // Icon slot
             var iconSlot = MakeRect("IconSlot", row);
-            SetLayout(iconSlot.gameObject, prefW: 34, prefH: 34);
+            SetLayout(iconSlot.gameObject, prefW: 32, prefH: 32, minW: 32, minH: 32);
 
             if (_slotSprite != null)
             {
@@ -584,7 +692,7 @@ namespace StartingClassMod
         private void MakeSkillRow(Transform parent, SkillBonus skill)
         {
             var row = MakeRect("Skill_" + skill.SkillType, parent);
-            SetLayout(row.gameObject, prefH: 26);
+            SetLayout(row.gameObject, prefH: 24);
             var hl = row.gameObject.AddComponent<HorizontalLayoutGroup>();
             hl.spacing = 6;
             hl.childForceExpandWidth = false;
@@ -625,11 +733,6 @@ namespace StartingClassMod
             rt.anchorMax = Vector2.one;
             rt.offsetMin = new Vector2(inset, inset);
             rt.offsetMax = new Vector2(-inset, -inset);
-        }
-
-        private static void Stretch(GameObject go, int inset = 0)
-        {
-            Stretch(go.GetComponent<RectTransform>(), inset);
         }
 
         private static void AnchorCenter(RectTransform rt, float w, float h)

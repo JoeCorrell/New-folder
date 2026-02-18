@@ -7,3 +7,4 @@ C:\Projects\valheim starting class mod\New folder\bin\Debug\StartingClassMod.dll
 C:\Projects\valheim starting class mod\New folder\bin\Debug\StartingClassMod.pdb
 C:\Projects\valheim starting class mod\New folder\obj\Debug\StartingClassMod.dll
 C:\Projects\valheim starting class mod\New folder\obj\Debug\StartingClassMod.pdb
+C:\Projects\valheim starting class mod\New folder\obj\Debug\StartingClassMod.sourcelink.json

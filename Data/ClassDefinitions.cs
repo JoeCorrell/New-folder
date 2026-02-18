@@ -15,7 +15,11 @@ namespace StartingClassMod
                 Farmer(),
                 Fisher(),
                 Carpenter(),
-                Miner()
+                Miner(),
+                Hunter(),
+                Lumberjack(),
+                Forager(),
+                Assassin()
             };
         }
 
@@ -129,5 +133,95 @@ namespace StartingClassMod
                 }
             );
         }
+        private static StartingClass Hunter()
+        {
+            return new StartingClass(
+                "Hunter",
+                "A keen-eyed stalker of prey.\nStarts with a bow, arrows, and the instincts of a predator.",
+                "Bow",
+                new List<StartingItem>
+                {
+                    new StartingItem("Bow"),
+                    new StartingItem("ArrowFlint", 30),
+                    new StartingItem("CapeDeerHide"),
+                    new StartingItem("CookedMeat", 5),
+                    new StartingItem("Torch")
+                },
+                new List<SkillBonus>
+                {
+                    new SkillBonus(Skills.SkillType.Bows, 10f),
+                    new SkillBonus(Skills.SkillType.Sneak, 5f)
+                }
+            );
+        }
+
+        private static StartingClass Lumberjack()
+        {
+            return new StartingClass(
+                "Lumberjack",
+                "A rugged woodsman with a sharp axe.\nStarts with chopping tools and a sturdy defense.",
+                "AxeFlint",
+                new List<StartingItem>
+                {
+                    new StartingItem("AxeFlint"),
+                    new StartingItem("ShieldWood"),
+                    new StartingItem("Wood", 50),
+                    new StartingItem("Resin", 20),
+                    new StartingItem("CookedMeat", 5),
+                    new StartingItem("Torch")
+                },
+                new List<SkillBonus>
+                {
+                    new SkillBonus(Skills.SkillType.Axes, 10f),
+                    new SkillBonus(Skills.SkillType.WoodCutting, 5f)
+                }
+            );
+        }
+
+        private static StartingClass Forager()
+        {
+            return new StartingClass(
+                "Forager",
+                "A wanderer who lives off the land.\nStarts with gathered provisions and knowledge of the wilds.",
+                "Mushroom",
+                new List<StartingItem>
+                {
+                    new StartingItem("Club"),
+                    new StartingItem("Torch"),
+                    new StartingItem("Mushroom", 10),
+                    new StartingItem("Raspberry", 10),
+                    new StartingItem("Blueberries", 10),
+                    new StartingItem("Honey", 5)
+                },
+                new List<SkillBonus>
+                {
+                    new SkillBonus(Skills.SkillType.Run, 10f),
+                    new SkillBonus(Skills.SkillType.Sneak, 5f)
+                }
+            );
+        }
+        private static StartingClass Assassin()
+        {
+            return new StartingClass(
+                "Assassin",
+                "A shadow who strikes without warning.\nStarts with a blade, leather armor, and deadly stealth.",
+                "KnifeFlint",
+                new List<StartingItem>
+                {
+                    new StartingItem("KnifeFlint"),
+                    new StartingItem("ArmorLeatherChest"),
+                    new StartingItem("Ooze", 10),
+                    new StartingItem("CookedMeat", 5),
+                    new StartingItem("Resin", 10),
+                    new StartingItem("Torch")
+                },
+                new List<SkillBonus>
+                {
+                    new SkillBonus(Skills.SkillType.Sneak, 10f),
+                    new SkillBonus(Skills.SkillType.Knives, 5f)
+                }
+            );
+        }
     }
 }
+
