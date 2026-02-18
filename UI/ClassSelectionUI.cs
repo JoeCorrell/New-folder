@@ -48,7 +48,7 @@ namespace StartingClassMod
         private Camera _previewCamera;
         private GameObject _previewClone;
         private Light _previewLight;
-        private GameObject _previewPanel;
+        private Light _fillLight;
         private static readonly Vector3 PreviewSpawnPos = new Vector3(10000f, 5000f, 10000f);
 
         // ── Colors ──
@@ -72,6 +72,14 @@ namespace StartingClassMod
             _canvasGO.SetActive(true);
             _isVisible = true;
 
+            SetupPreviewClone();
+            if (_previewCamera != null)
+                _previewCamera.enabled = true;
+            if (_previewLight != null)
+                _previewLight.enabled = true;
+            if (_fillLight != null)
+                _fillLight.enabled = true;
+
             PopulateClassList();
             ClearDetail();
 
@@ -81,6 +89,13 @@ namespace StartingClassMod
         {
             _isVisible = false;
             _selectedIndex = -1;
+            if (_previewCamera != null)
+                _previewCamera.enabled = false;
+            if (_previewLight != null)
+                _previewLight.enabled = false;
+            if (_fillLight != null)
+                _fillLight.enabled = false;
+            ClearPreviewClone();
             if (_canvasGO != null)
                 _canvasGO.SetActive(false);
         }
@@ -112,7 +127,6 @@ namespace StartingClassMod
             ClearPreviewClone();
             if (_previewCamGO != null) Destroy(_previewCamGO);
             if (_previewRT != null) { _previewRT.Release(); Destroy(_previewRT); }
-            if (_previewPanel != null) Destroy(_previewPanel);
             if (_canvasGO != null) Destroy(_canvasGO);
         }
 
@@ -241,9 +255,9 @@ namespace StartingClassMod
             }
 
             // Widen panel to the right by the list column width (left edge stays in place)
-            float extraWidth = listColumnWidth;
+            float extraWidth = listColumnWidth - 4f;
             panelRT.sizeDelta = new Vector2(origPanelWidth + extraWidth, panelRT.sizeDelta.y);
-            panelRT.anchoredPosition = new Vector2(extraWidth / 2f, 0f);
+            panelRT.anchoredPosition = Vector2.zero;
 
             // Children pinned to the right edge (anchorMin.x ~= 1 && anchorMax.x ~= 1)
             // ride the right edge when the panel widens — shift them back left.
@@ -342,10 +356,37 @@ namespace StartingClassMod
             foreach (var c in _clonedPanel.GetComponentsInChildren<UIGroupHandler>(true))
                 Destroy(c);
 
-            // Hide the gold outline frame
+            // Hide the gold outline frame and ALL gold decorative lines (including nested ones)
             var selectedFrame = _clonedPanel.transform.Find("selected_frame");
             if (selectedFrame != null)
                 selectedFrame.gameObject.SetActive(false);
+            foreach (Transform t in _clonedPanel.GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name.Contains("BraidLine"))
+                    t.gameObject.SetActive(false);
+            }
+
+            // Hide scrollbars/scroll elements that aren't part of the class list or description panel
+            var descPanelGO = _clonedPanel.transform.Find("Decription")?.gameObject;
+            var listScrollGO = _listScrollRect != null ? _listScrollRect.gameObject : null;
+            foreach (var sb in _clonedPanel.GetComponentsInChildren<Scrollbar>(true))
+            {
+                if (sb == _recipeScrollbar) continue;
+                if (descPanelGO != null && sb.transform.IsChildOf(descPanelGO.transform)) continue;
+                sb.gameObject.SetActive(false);
+            }
+            foreach (Transform t in _clonedPanel.GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name.IndexOf("scroll", System.StringComparison.OrdinalIgnoreCase) >= 0
+                    || t.name.IndexOf("Scrollbar", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    if (listScrollGO != null && t.IsChildOf(listScrollGO.transform)) continue;
+                    if (t.gameObject == listScrollGO) continue;
+                    if (t.GetComponent<Scrollbar>() == _recipeScrollbar) continue;
+                    if (descPanelGO != null && t.IsChildOf(descPanelGO.transform)) continue;
+                    t.gameObject.SetActive(false);
+                }
+            }
 
             // ══════════════════════════════════════════
             //  Ensure recipe list root anchors to top for proper alignment
@@ -365,6 +406,21 @@ namespace StartingClassMod
             // Title → "Choose Your Starting Class"
             if (_titleText != null)
                 _titleText.text = "Choose Your Starting Class";
+
+            // Stretch the class name label across the full description width so centering works
+            // (originally it's offset to make room for the recipe icon, which we hide)
+            if (_recipeName != null)
+            {
+                var nameRT = _recipeName.GetComponent<RectTransform>();
+                if (nameRT != null)
+                {
+                    nameRT.anchorMin = new Vector2(0f, nameRT.anchorMin.y);
+                    nameRT.anchorMax = new Vector2(1f, nameRT.anchorMax.y);
+                    nameRT.offsetMin = new Vector2(10f, nameRT.offsetMin.y);
+                    nameRT.offsetMax = new Vector2(-10f, nameRT.offsetMax.y);
+                }
+                _recipeName.alignment = TextAlignmentOptions.Center;
+            }
 
             // Craft button → confirm class selection
             if (_craftButton != null)
@@ -387,18 +443,26 @@ namespace StartingClassMod
             // Reset detail section
             ClearDetail();
 
+            // ── Player preview (camera view in the right column) ──
+            CreatePreviewPanel(invGui, extraWidth);
+
             _canvasGO.SetActive(false);
             _uiBuilt = true;
         }
 
         // ══════════════════════════════════════════
-        //  PLAYER PREVIEW (separate panel to the right)
+        //  PLAYER PREVIEW (camera in the right column of the widened panel)
         // ══════════════════════════════════════════
 
-        private void CreatePreviewPanel(InventoryGui invGui)
+        private void CreatePreviewPanel(InventoryGui invGui, float columnWidth)
         {
-            // ── RenderTexture ──
-            _previewRT = new RenderTexture(256, 512, 24, RenderTextureFormat.ARGB32);
+            // Match the RT aspect ratio to the actual display area to avoid squishing.
+            // Column is columnWidth wide, panel height from sizeDelta.
+            var panelRT = _clonedPanel.GetComponent<RectTransform>();
+            float panelHeight = panelRT.sizeDelta.y;
+            int rtW = Mathf.Max(64, Mathf.RoundToInt(columnWidth));
+            int rtH = Mathf.Max(64, Mathf.RoundToInt(panelHeight));
+            _previewRT = new RenderTexture(rtW, rtH, 24, RenderTextureFormat.ARGB32);
 
             // ── Preview Camera ──
             _previewCamGO = new GameObject("ClassPreview_Camera");
@@ -407,7 +471,7 @@ namespace StartingClassMod
             _previewCamera.targetTexture = _previewRT;
             _previewCamera.clearFlags = CameraClearFlags.SolidColor;
             _previewCamera.backgroundColor = new Color(0f, 0f, 0f, 0f);
-            _previewCamera.fieldOfView = 30f;
+            _previewCamera.fieldOfView = 35f;
             _previewCamera.nearClipPlane = 0.1f;
             _previewCamera.farClipPlane = 10f;
             _previewCamera.depth = -2;
@@ -417,84 +481,94 @@ namespace StartingClassMod
             if (charLayer < 0) charLayer = 9;
             _previewCamera.cullingMask = 1 << charLayer;
 
-            Vector3 cloneCenter = PreviewSpawnPos + Vector3.up * 0.9f;
-            _previewCamGO.transform.position = cloneCenter + Vector3.forward * 4.5f;
+            Vector3 cloneCenter = PreviewSpawnPos + Vector3.up * 0.85f;
+            _previewCamGO.transform.position = cloneCenter + Vector3.forward * 5.7f;
             _previewCamGO.transform.LookAt(cloneCenter);
 
-            // ── Dedicated light ──
+            // ── Key light (point light — local, won't affect game world) ──
+            // Soft warm light similar to the character select screen
             var lightGO = new GameObject("ClassPreview_Light");
-            lightGO.transform.SetParent(_previewCamGO.transform, false);
-            lightGO.transform.localPosition = new Vector3(0.5f, 1f, 0f);
-            lightGO.transform.localRotation = Quaternion.Euler(30f, -15f, 0f);
+            DontDestroyOnLoad(lightGO);
+            lightGO.transform.position = PreviewSpawnPos + new Vector3(1f, 2f, 3f);
             _previewLight = lightGO.AddComponent<Light>();
-            _previewLight.type = LightType.Directional;
-            _previewLight.color = new Color(1f, 0.95f, 0.85f);
-            _previewLight.intensity = 1.2f;
+            _previewLight.type = LightType.Point;
+            _previewLight.color = new Color(1f, 0.92f, 0.82f);
+            _previewLight.intensity = 1.1f;
+            _previewLight.range = 15f;
             _previewLight.cullingMask = 1 << charLayer;
+            _previewLight.enabled = false;
 
-            // ── Separate preview panel, positioned to the right of the class selection panel ──
-            var panelRT = _clonedPanel.GetComponent<RectTransform>();
-            float panelWidth = panelRT.sizeDelta.x;
-            float panelHeight = panelRT.sizeDelta.y;
-            float gap = 10f;
-            float previewWidth = panelHeight * 0.4f; // portrait aspect
+            // ── Fill light (softer, from opposite side) ──
+            var fillGO = new GameObject("ClassPreview_FillLight");
+            DontDestroyOnLoad(fillGO);
+            fillGO.transform.position = PreviewSpawnPos + new Vector3(-1.5f, 1f, 2f);
+            _fillLight = fillGO.AddComponent<Light>();
+            _fillLight.type = LightType.Point;
+            _fillLight.color = new Color(0.75f, 0.82f, 0.95f);
+            _fillLight.intensity = 0.5f;
+            _fillLight.range = 15f;
+            _fillLight.cullingMask = 1 << charLayer;
+            _fillLight.enabled = false;
 
-            // Find the actual background image (may be on the root or a child)
-            Image sourceImg = null;
-            var rootImg = _clonedPanel.GetComponent<Image>();
-            if (rootImg != null && rootImg.sprite != null)
+            // ── Background panel using Decription panel's style ──
+            var descPanel = _clonedPanel.transform.Find("Decription");
+            Image descImg = descPanel != null ? descPanel.GetComponent<Image>() : null;
+
+            // Match the RecipeList's vertical position for consistency
+            var origRecipeList = _clonedPanel.transform.Find("RecipeList") as RectTransform;
+
+            var containerGO = new GameObject("PreviewContainer", typeof(RectTransform), typeof(Image));
+            containerGO.transform.SetParent(_clonedPanel.transform, false);
+            var containerRT = containerGO.GetComponent<RectTransform>();
+
+            if (origRecipeList != null)
             {
-                sourceImg = rootImg;
+                // Place in the right column: same vertical position as RecipeList,
+                // but horizontally aligned to fill the extra column width.
+                float totalWidth = panelRT.sizeDelta.x;  // 770
+                float margin = origRecipeList.offsetMin.x; // left margin from RecipeList
+
+                containerRT.anchorMin = origRecipeList.anchorMin;
+                containerRT.anchorMax = origRecipeList.anchorMax;
+                containerRT.pivot = origRecipeList.pivot;
+
+                // Right edge at panel width - margin, left edge = right edge - columnWidth + margin*2
+                float rightEdge = totalWidth - margin - 3f;
+                float leftEdge = rightEdge - (origRecipeList.offsetMax.x - origRecipeList.offsetMin.x) - 3f;
+                containerRT.offsetMin = new Vector2(leftEdge, origRecipeList.offsetMin.y);
+                containerRT.offsetMax = new Vector2(rightEdge, origRecipeList.offsetMax.y);
             }
             else
             {
-                // Search direct children for the largest Image with a sprite
-                foreach (Transform child in _clonedPanel.transform)
-                {
-                    var img = child.GetComponent<Image>();
-                    if (img != null && img.sprite != null && img.gameObject.activeSelf)
-                    {
-                        if (sourceImg == null || img.rectTransform.rect.width * img.rectTransform.rect.height >
-                            sourceImg.rectTransform.rect.width * sourceImg.rectTransform.rect.height)
-                            sourceImg = img;
-                    }
-                }
+                containerRT.anchorMin = new Vector2(1f, 0f);
+                containerRT.anchorMax = new Vector2(1f, 1f);
+                containerRT.pivot = new Vector2(1f, 0.5f);
+                containerRT.sizeDelta = new Vector2(columnWidth - 20f, 0f);
+                containerRT.anchoredPosition = new Vector2(-10f, 0f);
+                containerRT.offsetMin = new Vector2(containerRT.offsetMin.x, 100f);
+                containerRT.offsetMax = new Vector2(containerRT.offsetMax.x, -30f);
             }
 
-            _previewPanel = new GameObject("ClassPreview_Panel", typeof(RectTransform), typeof(Image));
-            _previewPanel.transform.SetParent(_canvasGO.transform, false);
-
-            var prevPanelRT = _previewPanel.GetComponent<RectTransform>();
-            prevPanelRT.anchorMin = new Vector2(0.5f, 0.5f);
-            prevPanelRT.anchorMax = new Vector2(0.5f, 0.5f);
-            prevPanelRT.pivot = new Vector2(0.5f, 0.5f);
-            prevPanelRT.sizeDelta = new Vector2(previewWidth, panelHeight);
-            // Place to the right of the class panel, vertically centered
-            float previewX = panelWidth / 2f + gap + previewWidth / 2f;
-            prevPanelRT.anchoredPosition = new Vector2(previewX, 0f);
-
-            var prevPanelImg = _previewPanel.GetComponent<Image>();
-            if (sourceImg != null)
+            var containerImg = containerGO.GetComponent<Image>();
+            if (descImg != null && descImg.sprite != null)
             {
-                prevPanelImg.sprite = sourceImg.sprite;
-                prevPanelImg.type = sourceImg.type;
-                prevPanelImg.material = sourceImg.material;
-                prevPanelImg.color = sourceImg.color;
-                prevPanelImg.pixelsPerUnitMultiplier = sourceImg.pixelsPerUnitMultiplier;
+                containerImg.sprite = descImg.sprite;
+                containerImg.type = descImg.type;
+                containerImg.color = descImg.color;
             }
             else
             {
-                prevPanelImg.color = new Color(0f, 0f, 0f, 0.8f);
+                containerImg.color = new Color(0f, 0f, 0f, 0.45f);
             }
 
-            // ── RawImage inside the preview panel ──
+            // ── RawImage inside the container ──
             var rawImgGO = new GameObject("PreviewImage", typeof(RectTransform));
-            rawImgGO.transform.SetParent(_previewPanel.transform, false);
+            rawImgGO.transform.SetParent(containerGO.transform, false);
             var rawRT = rawImgGO.GetComponent<RectTransform>();
             rawRT.anchorMin = Vector2.zero;
             rawRT.anchorMax = Vector2.one;
-            rawRT.offsetMin = new Vector2(10f, 10f);
-            rawRT.offsetMax = new Vector2(-10f, -10f);
+            rawRT.offsetMin = Vector2.zero;
+            rawRT.offsetMax = Vector2.zero;
 
             var rawImg = rawImgGO.AddComponent<RawImage>();
             rawImg.texture = _previewRT;
@@ -571,6 +645,99 @@ namespace StartingClassMod
         private void UpdatePreviewCamera()
         {
             // Camera position is fixed (set once in CreatePreviewPanel), no per-frame update needed
+        }
+
+        /// <summary>
+        /// Updates the preview clone's visual equipment to match the selected class.
+        /// Uses reflection to set equipment fields and force hash resets, bypassing ZDO dependency.
+        /// Re-applies character layer to newly attached equipment models.
+        /// </summary>
+        private void UpdatePreviewEquipment(StartingClass cls)
+        {
+            if (_previewClone == null) return;
+            var visEquip = _previewClone.GetComponent<VisEquipment>();
+            if (visEquip == null) return;
+
+            // Map of VisEquipment field name → prefab name to set
+            var slotFields = new Dictionary<string, string>
+            {
+                { "m_rightItem", "" }, { "m_leftItem", "" },
+                { "m_chestItem", "" }, { "m_legItem", "" },
+                { "m_helmetItem", "" }, { "m_shoulderItem", "" },
+                { "m_utilityItem", "" }, { "m_leftBackItem", "" },
+                { "m_rightBackItem", "" }
+            };
+
+            // Also track variant fields
+            var variantFields = new Dictionary<string, int>
+            {
+                { "m_leftItemVariant", 0 }, { "m_shoulderItemVariant", 0 },
+                { "m_leftBackItemVariant", 0 }
+            };
+
+            if (cls.PreviewEquipment != null)
+            {
+                foreach (var prefabName in cls.PreviewEquipment)
+                {
+                    var prefab = ZNetScene.instance?.GetPrefab(prefabName);
+                    if (prefab == null) continue;
+                    var drop = prefab.GetComponent<ItemDrop>();
+                    if (drop == null) continue;
+
+                    switch (drop.m_itemData.m_shared.m_itemType)
+                    {
+                        case ItemDrop.ItemData.ItemType.OneHandedWeapon:
+                        case ItemDrop.ItemData.ItemType.TwoHandedWeapon:
+                        case ItemDrop.ItemData.ItemType.Tool:
+                            slotFields["m_rightItem"] = prefabName;
+                            break;
+                        case ItemDrop.ItemData.ItemType.TwoHandedWeaponLeft:
+                        case ItemDrop.ItemData.ItemType.Shield:
+                        case ItemDrop.ItemData.ItemType.Torch:
+                            slotFields["m_leftItem"] = prefabName;
+                            break;
+                        case ItemDrop.ItemData.ItemType.Bow:
+                            slotFields["m_leftBackItem"] = prefabName;
+                            break;
+                        case ItemDrop.ItemData.ItemType.Chest:
+                            slotFields["m_chestItem"] = prefabName;
+                            break;
+                        case ItemDrop.ItemData.ItemType.Legs:
+                            slotFields["m_legItem"] = prefabName;
+                            break;
+                        case ItemDrop.ItemData.ItemType.Helmet:
+                            slotFields["m_helmetItem"] = prefabName;
+                            break;
+                        case ItemDrop.ItemData.ItemType.Shoulder:
+                            slotFields["m_shoulderItem"] = prefabName;
+                            break;
+                        case ItemDrop.ItemData.ItemType.Utility:
+                            slotFields["m_utilityItem"] = prefabName;
+                            break;
+                    }
+                }
+            }
+
+            // Directly set equipment name fields via reflection (bypasses ZDO)
+            foreach (var kv in slotFields)
+                AccessTools.Field(typeof(VisEquipment), kv.Key)?.SetValue(visEquip, kv.Value);
+            foreach (var kv in variantFields)
+                AccessTools.Field(typeof(VisEquipment), kv.Key)?.SetValue(visEquip, kv.Value);
+
+            // Reset all tracking hash fields to force UpdateVisuals to re-apply everything
+            foreach (var field in AccessTools.GetDeclaredFields(typeof(VisEquipment)))
+            {
+                if (field.FieldType == typeof(int) && field.Name.StartsWith("m_current") && field.Name.Contains("Hash"))
+                    field.SetValue(visEquip, -1);
+            }
+
+            AccessTools.Method(typeof(VisEquipment), "UpdateVisuals")?.Invoke(visEquip, null);
+
+            // Equipment models are spawned by UpdateVisuals — force them onto character layer
+            int charLayer = LayerMask.NameToLayer("character");
+            if (charLayer < 0) charLayer = 9;
+            foreach (var t in _previewClone.GetComponentsInChildren<Transform>(true))
+                t.gameObject.layer = charLayer;
         }
 
         // ══════════════════════════════════════════
@@ -748,6 +915,7 @@ namespace StartingClassMod
             _selectedIndex = index;
             RefreshHighlights();
             RefreshDetail();
+            UpdatePreviewEquipment(_classes[index]);
         }
 
         private void RefreshHighlights()

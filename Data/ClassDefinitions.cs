@@ -52,7 +52,8 @@ namespace StartingClassMod
                 new List<SkillBonus>
                 {
                     new SkillBonus(Skills.SkillType.Bows, 5f)
-                }
+                },
+                new List<string> { "ArmorLeatherChest", "ArmorLeatherLegs", "HelmetLeather", "CapeDeerHide", "BowFineWood" }
             );
         }
 
@@ -61,12 +62,19 @@ namespace StartingClassMod
             return new StartingClass(
                 "Assassin",
                 $"{PastLife}\nYou were the blade that struck between heartbeats, the shadow that slipped past locked doors and sleeping guards.\n\n{Purpose}\nValheim's creatures have never known a killer so quiet. Move unseen, strike once, and vanish.",
-                PlaceholderItems(),
+                new List<StartingItem>
+                {
+                    new StartingItem("ArmorTrollLeatherChest"),
+                    new StartingItem("ArmorTrollLeatherLegs"),
+                    new StartingItem("HelmetTrollLeather"),
+                    new StartingItem("CapeTrollHide")
+                },
                 new List<SkillBonus>
                 {
                     new SkillBonus(Skills.SkillType.Sneak, 10f),
                     new SkillBonus(Skills.SkillType.Knives, 5f)
-                }
+                },
+                new List<string> { "ArmorTrollLeatherChest", "ArmorTrollLeatherLegs", "HelmetTrollLeather", "CapeTrollHide" }
             );
         }
 
@@ -79,7 +87,8 @@ namespace StartingClassMod
                 new List<SkillBonus>
                 {
                     new SkillBonus(Skills.SkillType.Pickaxes, 5f)
-                }
+                },
+                new List<string> { "ArmorBronzeChest", "ArmorBronzeLegs", "HelmetBronze", "SledgeStagbreaker" }
             );
         }
 
@@ -92,7 +101,8 @@ namespace StartingClassMod
                 new List<SkillBonus>
                 {
                     new SkillBonus(Skills.SkillType.Clubs, 5f)
-                }
+                },
+                new List<string> { "ArmorIronChest", "ArmorIronLegs", "HelmetIron", "MaceBronze" }
             );
         }
 
@@ -106,7 +116,8 @@ namespace StartingClassMod
                 {
                     new SkillBonus(Skills.SkillType.WoodCutting, 10f),
                     new SkillBonus(Skills.SkillType.Axes, 5f)
-                }
+                },
+                new List<string> { "ArmorLeatherChest", "ArmorLeatherLegs", "HelmetLeather", "AxeBronze" }
             );
         }
 
@@ -119,7 +130,8 @@ namespace StartingClassMod
                 new List<SkillBonus>
                 {
                     new SkillBonus(Skills.SkillType.Run, 5f)
-                }
+                },
+                new List<string> { "ArmorLeatherChest", "ArmorLeatherLegs", "CapeLox", "SpearBronze" }
             );
         }
 
@@ -133,7 +145,8 @@ namespace StartingClassMod
                 {
                     new SkillBonus(Skills.SkillType.Blocking, 5f),
                     new SkillBonus(Skills.SkillType.Run, 5f)
-                }
+                },
+                new List<string> { "ArmorRagsChest", "ArmorRagsLegs", "ShieldWood" }
             );
         }
 
@@ -147,7 +160,8 @@ namespace StartingClassMod
                 {
                     new SkillBonus(Skills.SkillType.Swim, 10f),
                     new SkillBonus(Skills.SkillType.Knives, 5f)
-                }
+                },
+                new List<string> { "ArmorLeatherChest", "ArmorLeatherLegs", "KnifeFlint" }
             );
         }
 
@@ -161,7 +175,8 @@ namespace StartingClassMod
                 {
                     new SkillBonus(Skills.SkillType.Run, 10f),
                     new SkillBonus(Skills.SkillType.Sneak, 5f)
-                }
+                },
+                new List<string> { "ArmorLeatherChest", "ArmorLeatherLegs", "CapeDeerHide" }
             );
         }
 
@@ -174,7 +189,8 @@ namespace StartingClassMod
                 new List<SkillBonus>
                 {
                     new SkillBonus(Skills.SkillType.BloodMagic, 5f)
-                }
+                },
+                new List<string> { "ArmorRootChest", "ArmorRootLegs", "HelmetRoot", "CapeFeather" }
             );
         }
 
@@ -188,7 +204,8 @@ namespace StartingClassMod
                 {
                     new SkillBonus(Skills.SkillType.Bows, 10f),
                     new SkillBonus(Skills.SkillType.Sneak, 5f)
-                }
+                },
+                new List<string> { "ArmorLeatherChest", "ArmorLeatherLegs", "HelmetLeather", "CapeDeerHide", "BowHuntsman" }
             );
         }
 
@@ -202,7 +219,8 @@ namespace StartingClassMod
                 {
                     new SkillBonus(Skills.SkillType.Axes, 10f),
                     new SkillBonus(Skills.SkillType.WoodCutting, 5f)
-                }
+                },
+                new List<string> { "ArmorLeatherChest", "ArmorLeatherLegs", "AxeIron" }
             );
         }
 
@@ -216,7 +234,8 @@ namespace StartingClassMod
                 {
                     new SkillBonus(Skills.SkillType.Pickaxes, 10f),
                     new SkillBonus(Skills.SkillType.Blocking, 5f)
-                }
+                },
+                new List<string> { "ArmorBronzeChest", "ArmorBronzeLegs", "HelmetBronze", "PickaxeIron" }
             );
         }
 
@@ -229,7 +248,8 @@ namespace StartingClassMod
                 new List<SkillBonus>
                 {
                     new SkillBonus(Skills.SkillType.Blocking, 5f)
-                }
+                },
+                new List<string> { "ArmorIronChest", "ArmorIronLegs", "HelmetIron", "ShieldBanded", "SwordIron" }
             );
         }
 
@@ -242,7 +262,8 @@ namespace StartingClassMod
                 new List<SkillBonus>
                 {
                     new SkillBonus(Skills.SkillType.BloodMagic, 5f)
-                }
+                },
+                new List<string> { "ArmorFenringChest", "ArmorFenringLegs", "HelmetFenring", "CapeWolf" }
             );
         }
 
@@ -255,7 +276,8 @@ namespace StartingClassMod
                 new List<SkillBonus>
                 {
                     new SkillBonus(Skills.SkillType.ElementalMagic, 5f)
-                }
+                },
+                new List<string> { "ArmorMageChest", "ArmorMageLegs", "HelmetMage", "CapeFeather", "StaffFireballs" }
             );
         }
     }
