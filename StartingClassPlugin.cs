@@ -23,6 +23,23 @@ namespace StartingClassMod
             Logger.LogInfo($"{PluginName} v{PluginVersion} loaded.");
         }
 
+        private void Update()
+        {
+            if (Player.m_localPlayer == null) return;
+
+            // Toggle class UI with Z key or RB+X on controller
+            bool keyboardToggle = Input.GetKeyDown(KeyCode.Z);
+            bool controllerToggle = ZInput.GetButton("JoyTabRight") && ZInput.GetButtonDown("JoyButtonX");
+
+            if (keyboardToggle || controllerToggle)
+            {
+                if (IsClassMenuOpen)
+                    HideClassSelection();
+                else
+                    ShowClassSelection(true);
+            }
+        }
+
         private void OnDestroy()
         {
             _harmony?.UnpatchSelf();

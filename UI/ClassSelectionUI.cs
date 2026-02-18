@@ -5,6 +5,12 @@ using UnityEngine.UI;
 
 namespace StartingClassMod
 {
+    /// <summary>
+    /// Class selection UI built by cloning Valheim's crafting panel at runtime.
+    /// The left side lists available classes (like recipes), the right side shows
+    /// class details (like item info), and the requirement slots show starting items.
+    /// Full controller/gamepad support matching Valheim's input scheme.
+    /// </summary>
     public class ClassSelectionUI : MonoBehaviour
     {
         // ── State ──
@@ -17,46 +23,29 @@ namespace StartingClassMod
         private GameObject _canvasGO;
         private bool _uiBuilt;
 
-        // ── Dynamic UI references ──
-        private GameObject _detailSection;
-        private GameObject _placeholder;
+        // ── Cloned crafting panel references ──
+        private GameObject _clonedPanel;
+        private TMP_Text _titleText;
+        private Image _recipeIcon;
+        private TMP_Text _recipeName;
+        private TMP_Text _recipeDescription;
+        private RectTransform _recipeListRoot;
+        private float _recipeListSpace;
+        private Button _craftButton;
+        private TMP_Text _craftButtonLabel;
+        private GameObject[] _requirementSlots;
+        private Scrollbar _recipeScrollbar;
+        private ScrollRect _listScrollRect;
+        private ScrollRectEnsureVisible _ensureVisible;
+
+        // ── Class list elements (instantiated from recipe element prefab) ──
+        private readonly List<GameObject> _classElements = new List<GameObject>();
+
+        // ── Close button (added manually for command-based opens) ──
         private GameObject _closeButton;
-        private TextMeshProUGUI _classNameLabel;
-        private TextMeshProUGUI _classDescLabel;
-        private TextMeshProUGUI _confirmLabel;
-        private Transform _equipmentList;
-        private Transform _skillsList;
-        private ScrollRect _detailScrollRect;
-        private readonly List<Image> _classBtnBGs = new List<Image>();
 
-        // ── Cached Valheim visuals ──
-        private TMP_FontAsset _font;
-        private Sprite _panelSprite;
-        private Color _panelColor = Color.white;
-        private Sprite _buttonSprite;
-        private ColorBlock _buttonCB;
-        private bool _hasButtonSprite;
-        private Sprite _slotSprite;
-        private Color _slotColor = Color.white;
-        private bool _visualsCached;
-
-        // ── Fallback palette ──
-        static readonly Color FallPanelBG   = new Color(0.051f, 0.051f, 0.078f, 0.96f);
-        static readonly Color FallBorder    = new Color(0.851f, 0.722f, 0.361f, 0.55f);
-        static readonly Color FallBtnNormal = new Color(0.098f, 0.098f, 0.133f);
-        static readonly Color FallBtnSelect = new Color(0.220f, 0.192f, 0.118f, 0.92f);
-        static readonly Color FallConfirm   = new Color(0.133f, 0.329f, 0.133f);
-        static readonly Color FallClose     = new Color(0.38f, 0.11f, 0.11f);
-        static readonly Color FallIconBG    = new Color(0.10f, 0.10f, 0.14f, 0.8f);
-
-        // ── Always-used colors ──
-        static readonly Color ColGold       = new Color(0.851f, 0.722f, 0.361f);
-        static readonly Color ColText       = new Color(0.78f, 0.78f, 0.78f);
-        static readonly Color ColTextBright = new Color(0.95f, 0.93f, 0.88f);
-        static readonly Color ColTextDim    = new Color(0.55f, 0.53f, 0.50f);
-        static readonly Color ColSkill      = new Color(0.400f, 0.702f, 0.898f);
-        static readonly Color ColSeparator  = new Color(0.851f, 0.722f, 0.361f, 0.30f);
-        static readonly Color ColOverlay    = new Color(0f, 0f, 0f, 0.65f);
+        // ── Colors ──
+        static readonly Color ColOverlay = new Color(0f, 0f, 0f, 0.65f);
 
         // ══════════════════════════════════════════
         //  PUBLIC API
@@ -71,12 +60,13 @@ namespace StartingClassMod
             _selectedIndex = -1;
 
             if (!_uiBuilt) BuildUI();
+            if (!_uiBuilt) return;
 
             _canvasGO.SetActive(true);
             _isVisible = true;
 
-            RefreshDetail();
-            RefreshButtonHighlights();
+            PopulateClassList();
+            ClearDetail();
 
             if (_closeButton != null)
                 _closeButton.SetActive(isFromCommand);
@@ -100,8 +90,12 @@ namespace StartingClassMod
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
 
+            // Keyboard close
             if (_isFromCommand && Input.GetKeyDown(KeyCode.Escape))
                 Close();
+
+            // Gamepad input
+            UpdateGamepadInput();
         }
 
         private void OnDestroy()
@@ -110,90 +104,73 @@ namespace StartingClassMod
         }
 
         // ══════════════════════════════════════════
-        //  CACHE VALHEIM VISUALS
+        //  GAMEPAD / CONTROLLER INPUT
         // ══════════════════════════════════════════
 
-        private void CacheVisuals()
+        private void UpdateGamepadInput()
         {
-            if (_visualsCached) return;
+            if (_classes == null || _classes.Count == 0) return;
 
-            // ── Font ──
-            foreach (var t in Resources.FindObjectsOfTypeAll<TextMeshProUGUI>())
+            // Navigate class list with D-pad / left stick (matches UpdateRecipeGamepadInput)
+            if (ZInput.GetButtonDown("JoyLStickDown") || ZInput.GetButtonDown("JoyDPadDown"))
             {
-                if (t.font != null) { _font = t.font; break; }
+                int next = (_selectedIndex < 0) ? 0 : Mathf.Min(_classes.Count - 1, _selectedIndex + 1);
+                SelectClass(next);
+                EnsureClassVisible(next);
             }
-            if (_font == null) _font = TMP_Settings.defaultFontAsset;
-
-            // ── Panel + button sprites from InventoryGui ──
-            var invGui = InventoryGui.instance;
-            if (invGui != null)
+            if (ZInput.GetButtonDown("JoyLStickUp") || ZInput.GetButtonDown("JoyDPadUp"))
             {
-                Image bestPanel = null;
-                float bestArea = 0;
-                foreach (var img in invGui.GetComponentsInChildren<Image>(true))
-                {
-                    if (img.sprite == null || img.sprite.name == "UISprite" || img.sprite.name == "Background")
-                        continue;
-                    if (img.type != Image.Type.Sliced && img.type != Image.Type.Tiled)
-                        continue;
-                    float area = img.rectTransform.rect.width * img.rectTransform.rect.height;
-                    if (area > bestArea)
-                    {
-                        bestArea = area;
-                        bestPanel = img;
-                    }
-                }
-                if (bestPanel != null)
-                {
-                    _panelSprite = bestPanel.sprite;
-                    _panelColor = bestPanel.color;
-                    StartingClassPlugin.Log($"Cached panel sprite: '{_panelSprite.name}'");
-                }
-
-                foreach (var btn in invGui.GetComponentsInChildren<Button>(true))
-                {
-                    var img = btn.targetGraphic as Image;
-                    if (img == null || img.sprite == null) continue;
-                    if (img.sprite.name == "UISprite" || img.sprite.name == "Background") continue;
-
-                    _buttonSprite = img.sprite;
-                    _buttonCB = btn.colors;
-                    _hasButtonSprite = true;
-                    StartingClassPlugin.Log($"Cached button sprite: '{_buttonSprite.name}'");
-                    break;
-                }
+                int prev = (_selectedIndex < 0) ? 0 : Mathf.Max(0, _selectedIndex - 1);
+                SelectClass(prev);
+                EnsureClassVisible(prev);
             }
 
-            // ── Item slot sprite ──
-            if (invGui != null)
+            // Confirm selection with A button
+            if (ZInput.GetButtonDown("JoyButtonA"))
             {
-                foreach (var img in invGui.GetComponentsInChildren<Image>(true))
-                {
-                    if (img.sprite == null) continue;
-                    var r = img.sprite.rect;
-                    if (r.width > 30 && r.width < 120 && Mathf.Abs(r.width - r.height) < 10
-                        && img.sprite.name != "UISprite" && img.sprite.name != "Background"
-                        && img.sprite != _panelSprite && img.sprite != _buttonSprite)
-                    {
-                        _slotSprite = img.sprite;
-                        _slotColor = img.color;
-                        StartingClassPlugin.Log($"Cached slot sprite: '{_slotSprite.name}'");
-                        break;
-                    }
-                }
+                if (_selectedIndex >= 0 && _selectedIndex < _classes.Count)
+                    ConfirmSelection();
             }
 
-            // Only mark cached once we've had a chance to grab sprites
-            _visualsCached = invGui != null;
+            // Close with B button (command-based or escape equivalent)
+            if (ZInput.GetButtonDown("JoyButtonB"))
+            {
+                if (_isFromCommand)
+                    Close();
+            }
+        }
+
+        private void EnsureClassVisible(int index)
+        {
+            if (index < 0 || index >= _classElements.Count) return;
+
+            // Use Valheim's ScrollRectEnsureVisible if available (same as CenterOnItem in SetRecipe)
+            if (_ensureVisible != null)
+            {
+                var elemRT = _classElements[index].transform as RectTransform;
+                if (elemRT != null)
+                    _ensureVisible.CenterOnItem(elemRT);
+                return;
+            }
+
+            // Fallback: manually adjust scrollbar position
+            if (_recipeScrollbar == null || _classes.Count <= 1) return;
+            float normalized = 1f - ((float)index / (_classes.Count - 1));
+            _recipeScrollbar.value = Mathf.Clamp01(normalized);
         }
 
         // ══════════════════════════════════════════
-        //  UI CONSTRUCTION
+        //  UI CONSTRUCTION — clone the crafting panel
         // ══════════════════════════════════════════
 
         private void BuildUI()
         {
-            CacheVisuals();
+            var invGui = InventoryGui.instance;
+            if (invGui == null || invGui.m_crafting == null)
+            {
+                StartingClassPlugin.LogError("Cannot build class selection UI: InventoryGui not available.");
+                return;
+            }
 
             // ── Canvas ──
             _canvasGO = new GameObject("StartingClass_Canvas");
@@ -211,219 +188,344 @@ namespace StartingClassMod
             _canvasGO.AddComponent<GraphicRaycaster>();
 
             // ── Full-screen click-blocker ──
-            var overlay = MakeRect("Overlay", _canvasGO.transform);
-            Stretch(overlay);
-            AddImage(overlay, ColOverlay);
-
-            // ── Panel frame ──
-            var frame = MakeRect("Frame", _canvasGO.transform);
-            AnchorCenter(frame, 780, 560);
-
-            Transform contentParent;
-            if (_panelSprite != null)
-            {
-                var frameImg = AddImage(frame, _panelColor);
-                frameImg.sprite = _panelSprite;
-                frameImg.type = Image.Type.Sliced;
-                contentParent = frame;
-            }
-            else
-            {
-                AddImage(frame, FallBorder);
-                var inner = MakeRect("Inner", frame);
-                Stretch(inner, 2);
-                AddImage(inner, FallPanelBG);
-                contentParent = inner;
-            }
-
-            // ── Outer content column ──
-            var content = MakeRect("Content", contentParent);
-            Stretch(content, 20);
-            var vLayout = content.gameObject.AddComponent<VerticalLayoutGroup>();
-            vLayout.spacing = 8;
-            vLayout.childForceExpandWidth = true;
-            vLayout.childForceExpandHeight = false;
-            vLayout.childControlWidth = true;
-            vLayout.childControlHeight = true;
-
-            // ── Title ──
-            MakeText(content, "Title", "Choose Your Starting Class",
-                     26, ColGold, TextAlignmentOptions.Center, FontStyles.Bold, 34);
-
-            // ── Subtitle ──
-            MakeText(content, "Subtitle", "Select a path to begin your journey in Midgard",
-                     13, ColTextDim, TextAlignmentOptions.Center, FontStyles.Italic, 18);
-
-            MakeSeparator(content);
+            var overlay = new GameObject("Overlay", typeof(RectTransform));
+            overlay.transform.SetParent(_canvasGO.transform, false);
+            var overlayRT = overlay.GetComponent<RectTransform>();
+            overlayRT.anchorMin = Vector2.zero;
+            overlayRT.anchorMax = Vector2.one;
+            overlayRT.offsetMin = Vector2.zero;
+            overlayRT.offsetMax = Vector2.zero;
+            var overlayImg = overlay.AddComponent<Image>();
+            overlayImg.color = ColOverlay;
 
             // ══════════════════════════════════════════
-            //  HORIZONTAL SPLIT: class list (left) | divider | detail (right)
+            //  CLONE the entire crafting panel
             // ══════════════════════════════════════════
-            var body = MakeRect("Body", content);
-            SetLayout(body.gameObject, flexH: 1);
-            var bodyHL = body.gameObject.AddComponent<HorizontalLayoutGroup>();
-            bodyHL.spacing = 10;
-            bodyHL.childForceExpandWidth = false;
-            bodyHL.childForceExpandHeight = true;
-            bodyHL.childControlWidth = true;
-            bodyHL.childControlHeight = true;
+            _clonedPanel = Instantiate(invGui.m_crafting.gameObject, _canvasGO.transform);
+            _clonedPanel.name = "ClassSelection_CraftingClone";
+            _clonedPanel.SetActive(true);
 
-            // ── LEFT: scrollable class list ──
-            var leftCol = MakeRect("LeftCol", body);
-            SetLayout(leftCol.gameObject, prefW: 220, minW: 220);
+            // Center on screen
+            var panelRT = _clonedPanel.GetComponent<RectTransform>();
+            panelRT.anchorMin = new Vector2(0.5f, 0.5f);
+            panelRT.anchorMax = new Vector2(0.5f, 0.5f);
+            panelRT.pivot = new Vector2(0.5f, 0.5f);
+            panelRT.anchoredPosition = Vector2.zero;
 
-            var leftScroll = MakeRect("LeftScroll", leftCol);
-            Stretch(leftScroll);
-            var leftSR = leftScroll.gameObject.AddComponent<ScrollRect>();
-            leftSR.horizontal = false;
-            leftSR.vertical = true;
-            leftSR.movementType = ScrollRect.MovementType.Clamped;
-            leftSR.scrollSensitivity = 30;
 
-            var leftVP = MakeRect("LeftViewport", leftScroll);
-            Stretch(leftVP);
-            leftVP.gameObject.AddComponent<RectMask2D>();
-            leftSR.viewport = leftVP;
+            // ══════════════════════════════════════════
+            //  Find cloned element references via path matching
+            // ══════════════════════════════════════════
+            var origRoot = invGui.m_crafting;
 
-            var leftContent = MakeRect("LeftContent", leftVP);
-            leftContent.anchorMin = new Vector2(0, 1);
-            leftContent.anchorMax = new Vector2(1, 1);
-            leftContent.pivot = new Vector2(0.5f, 1);
-            leftSR.content = leftContent;
+            _titleText         = FindCloned<TMP_Text>(origRoot, invGui.m_craftingStationName?.transform);
+            _recipeName        = FindCloned<TMP_Text>(origRoot, invGui.m_recipeName?.transform);
+            _recipeDescription = FindCloned<TMP_Text>(origRoot, invGui.m_recipeDecription?.transform);
+            _recipeIcon        = FindCloned<Image>(origRoot, invGui.m_recipeIcon?.transform);
+            _recipeListRoot    = FindCloned<RectTransform>(origRoot, invGui.m_recipeListRoot);
+            _craftButton       = FindCloned<Button>(origRoot, invGui.m_craftButton?.transform);
+            _recipeScrollbar   = FindCloned<Scrollbar>(origRoot, invGui.m_recipeListScroll?.transform);
 
-            var leftCSF = leftContent.gameObject.AddComponent<ContentSizeFitter>();
-            leftCSF.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            _recipeListSpace = invGui.m_recipeListSpace;
 
-            var leftVL = leftContent.gameObject.AddComponent<VerticalLayoutGroup>();
-            leftVL.spacing = 4;
-            leftVL.childForceExpandWidth = true;
-            leftVL.childForceExpandHeight = false;
-            leftVL.childControlWidth = true;
-            leftVL.childControlHeight = true;
-            leftVL.padding = new RectOffset(4, 4, 2, 2);
-
-            _classBtnBGs.Clear();
-            for (int i = 0; i < _classes.Count; i++)
+            // Find ScrollRect and ScrollRectEnsureVisible in the clone (for scrollbar + gamepad centering)
+            if (_recipeListRoot != null)
             {
-                int idx = i;
-                MakeClassCard(leftContent, _classes[i], () => SelectClass(idx));
+                _listScrollRect = _recipeListRoot.GetComponentInParent<ScrollRect>();
+                _ensureVisible = _recipeListRoot.GetComponentInParent<ScrollRectEnsureVisible>();
             }
 
-            // ── DIVIDER ──
-            var divider = MakeRect("Divider", body);
-            SetLayout(divider.gameObject, prefW: 2, minW: 2);
-            var divImg = AddImage(divider, ColGold * new Color(1, 1, 1, 0.6f));
-            divImg.raycastTarget = false;
+            // Find requirement slots in the clone
+            if (invGui.m_recipeRequirementList != null)
+            {
+                _requirementSlots = new GameObject[invGui.m_recipeRequirementList.Length];
+                for (int i = 0; i < invGui.m_recipeRequirementList.Length; i++)
+                {
+                    if (invGui.m_recipeRequirementList[i] != null)
+                        _requirementSlots[i] = FindClonedGO(origRoot, invGui.m_recipeRequirementList[i].transform);
+                }
+            }
 
-            // ── RIGHT: placeholder + detail ──
-            var rightCol = MakeRect("RightCol", body);
-            SetLayout(rightCol.gameObject, flexW: 1);
-            var rightVL = rightCol.gameObject.AddComponent<VerticalLayoutGroup>();
-            rightVL.spacing = 0;
-            rightVL.childForceExpandWidth = true;
-            rightVL.childForceExpandHeight = false;
-            rightVL.childControlWidth = true;
-            rightVL.childControlHeight = true;
-            rightVL.padding = new RectOffset(12, 4, 0, 0);
+            // ══════════════════════════════════════════
+            //  Hide crafting-specific elements we don't need
+            // ══════════════════════════════════════════
+            HideInClone(origRoot, invGui.m_tabCraft?.transform);
+            HideInClone(origRoot, invGui.m_tabUpgrade?.transform);
+            HideInClone(origRoot, invGui.m_repairButton?.transform);
+            HideInClone(origRoot, invGui.m_repairPanel);
+            HideInClone(origRoot, invGui.m_repairButtonGlow?.transform);
+            HideInClone(origRoot, invGui.m_repairPanelSelection);
+            HideInClone(origRoot, invGui.m_craftProgressPanel);
+            HideInClone(origRoot, invGui.m_craftCancelButton?.transform);
+            HideInClone(origRoot, invGui.m_variantButton?.transform);
+            HideInClone(origRoot, invGui.m_itemCraftType?.transform);
+            HideInClone(origRoot, invGui.m_craftingStationIcon?.transform);
+            HideInClone(origRoot, invGui.m_craftingStationLevelRoot);
 
-            // ── Placeholder (shown when no class selected) ──
-            var ph = MakeText(rightCol, "Placeholder",
-                              "Select a class to view details",
-                              16, ColTextDim, TextAlignmentOptions.Center, FontStyles.Italic, -1);
-            _placeholder = ph.gameObject;
-            SetLayout(_placeholder, flexH: 1);
+            // Hide quality panel (arrows, level selector)
+            HideInClone(origRoot, invGui.m_qualityPanel);
+            HideInClone(origRoot, invGui.m_qualityLevelDown?.transform);
+            HideInClone(origRoot, invGui.m_qualityLevelUp?.transform);
+            HideInClone(origRoot, invGui.m_qualityLevel?.transform);
 
-            // ── Detail section ──
-            _detailSection = MakeRect("DetailSection", rightCol).gameObject;
-            SetLayout(_detailSection, flexH: 1);
-            var dOuterLayout = _detailSection.AddComponent<VerticalLayoutGroup>();
-            dOuterLayout.spacing = 6;
-            dOuterLayout.childForceExpandWidth = true;
-            dOuterLayout.childForceExpandHeight = false;
-            dOuterLayout.childControlWidth = true;
-            dOuterLayout.childControlHeight = true;
-            dOuterLayout.padding = new RectOffset(4, 4, 4, 4);
-            _detailSection.SetActive(false);
+            // Hide upgrade item section
+            HideInClone(origRoot, invGui.m_upgradeItemIcon?.transform);
+            HideInClone(origRoot, invGui.m_upgradeItemName?.transform);
+            HideInClone(origRoot, invGui.m_upgradeItemDurability?.transform);
+            HideInClone(origRoot, invGui.m_upgradeItemQuality?.transform);
+            HideInClone(origRoot, invGui.m_upgradeItemQualityArrow?.transform);
+            HideInClone(origRoot, invGui.m_upgradeItemNextQuality?.transform);
+            HideInClone(origRoot, invGui.m_upgradeItemIndex?.transform);
 
-            // ── Scrollable detail content ──
-            var scrollGO = MakeRect("DetailScroll", _detailSection.transform);
-            SetLayout(scrollGO.gameObject, flexH: 1);
-            _detailScrollRect = scrollGO.gameObject.AddComponent<ScrollRect>();
-            _detailScrollRect.horizontal = false;
-            _detailScrollRect.vertical = true;
-            _detailScrollRect.movementType = ScrollRect.MovementType.Clamped;
-            _detailScrollRect.scrollSensitivity = 30;
+            // ══════════════════════════════════════════
+            //  Repurpose star/quality box as 5th requirement slot
+            // ══════════════════════════════════════════
+            RepurposeStarBox(origRoot, invGui);
 
-            var viewport = MakeRect("Viewport", scrollGO);
-            Stretch(viewport);
-            viewport.gameObject.AddComponent<RectMask2D>();
-            _detailScrollRect.viewport = viewport;
+            // Remove UIGroupHandler from clone to avoid input conflicts with original inventory
+            foreach (var c in _clonedPanel.GetComponentsInChildren<UIGroupHandler>(true))
+                Destroy(c);
 
-            var detailContent = MakeRect("DetailContent", viewport);
-            detailContent.anchorMin = new Vector2(0, 1);
-            detailContent.anchorMax = new Vector2(1, 1);
-            detailContent.pivot = new Vector2(0.5f, 1);
-            _detailScrollRect.content = detailContent;
+            // ══════════════════════════════════════════
+            //  Ensure recipe list root anchors to top for proper alignment
+            // ══════════════════════════════════════════
+            if (_recipeListRoot != null)
+            {
+                _recipeListRoot.pivot = new Vector2(_recipeListRoot.pivot.x, 1f);
+                _recipeListRoot.anchorMin = new Vector2(_recipeListRoot.anchorMin.x, 1f);
+                _recipeListRoot.anchorMax = new Vector2(_recipeListRoot.anchorMax.x, 1f);
+                _recipeListRoot.anchoredPosition = new Vector2(_recipeListRoot.anchoredPosition.x, 0f);
+            }
 
-            var csf = detailContent.gameObject.AddComponent<ContentSizeFitter>();
-            csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            // ══════════════════════════════════════════
+            //  Repurpose cloned elements
+            // ══════════════════════════════════════════
 
-            var dLayout = detailContent.gameObject.AddComponent<VerticalLayoutGroup>();
-            dLayout.spacing = 4;
-            dLayout.childForceExpandWidth = true;
-            dLayout.childForceExpandHeight = false;
-            dLayout.childControlWidth = true;
-            dLayout.childControlHeight = true;
-            dLayout.padding = new RectOffset(4, 4, 0, 0);
+            // Title → "Choose Your Starting Class"
+            if (_titleText != null)
+                _titleText.text = "Choose Your Starting Class";
 
-            _classNameLabel = MakeText(detailContent, "ClassName", "",
-                                       24, ColGold, TextAlignmentOptions.Left, FontStyles.Bold, 32);
+            // Craft button → confirm class selection
+            if (_craftButton != null)
+            {
+                _craftButton.onClick.RemoveAllListeners();
+                _craftButton.onClick.AddListener(ConfirmSelection);
+                _craftButton.interactable = false;
+                _craftButtonLabel = _craftButton.GetComponentInChildren<TMP_Text>();
+                if (_craftButtonLabel != null)
+                    _craftButtonLabel.text = "Select a Class";
+            }
 
-            _classDescLabel = MakeText(detailContent, "ClassDesc", "",
-                                       14, ColText, TextAlignmentOptions.TopLeft, FontStyles.Normal, -1);
-            _classDescLabel.textWrappingMode = TextWrappingModes.Normal;
-            _classDescLabel.overflowMode = TextOverflowModes.Overflow;
+            // Clear any existing recipe elements from the clone
+            if (_recipeListRoot != null)
+            {
+                for (int i = _recipeListRoot.childCount - 1; i >= 0; i--)
+                    Destroy(_recipeListRoot.GetChild(i).gameObject);
+            }
 
-            SetLayout(MakeRect("Sp1", detailContent).gameObject, prefH: 4);
+            // Reset detail section
+            ClearDetail();
 
-            MakeText(detailContent, "EqHeader", "Starting Equipment",
-                     15, ColGold, TextAlignmentOptions.Left, FontStyles.Bold, 24);
-
-            var eqList = MakeRect("EqList", detailContent);
-            var eqVL = eqList.gameObject.AddComponent<VerticalLayoutGroup>();
-            eqVL.spacing = 2;
-            eqVL.childForceExpandWidth = true;
-            eqVL.childForceExpandHeight = false;
-            eqVL.childControlWidth = true;
-            eqVL.childControlHeight = true;
-            eqVL.padding = new RectOffset(4, 0, 0, 0);
-            _equipmentList = eqList;
-
-            SetLayout(MakeRect("Sp2", detailContent).gameObject, prefH: 4);
-
-            MakeText(detailContent, "SkHeader", "Skill Bonuses",
-                     15, ColGold, TextAlignmentOptions.Left, FontStyles.Bold, 24);
-
-            var skList = MakeRect("SkList", detailContent);
-            var skVL = skList.gameObject.AddComponent<VerticalLayoutGroup>();
-            skVL.spacing = 2;
-            skVL.childForceExpandWidth = true;
-            skVL.childForceExpandHeight = false;
-            skVL.childControlWidth = true;
-            skVL.childControlHeight = true;
-            skVL.padding = new RectOffset(4, 0, 0, 0);
-            _skillsList = skList;
-
-            // ── Confirm button (inside detail, outside scroll) ──
-            MakeConfirmButton(_detailSection.transform);
-
-            // ── Close button (command only, below the body) ──
-            _closeButton = MakeStyledButton(content, "CloseBtn", "Close", FallClose, 36,
-                                            () => Close()).gameObject;
-            _closeButton.SetActive(false);
+            // ── Close button (top-right corner, command-only) ──
+            CreateCloseButton();
 
             _canvasGO.SetActive(false);
             _uiBuilt = true;
+            StartingClassPlugin.Log("Class selection UI built (cloned from crafting panel).");
+        }
+
+        private void CreateCloseButton()
+        {
+            var closeGO = new GameObject("CloseButton", typeof(RectTransform));
+            closeGO.transform.SetParent(_clonedPanel.transform, false);
+
+            var closeRT = closeGO.GetComponent<RectTransform>();
+            closeRT.anchorMin = new Vector2(1, 1);
+            closeRT.anchorMax = new Vector2(1, 1);
+            closeRT.pivot = new Vector2(1, 1);
+            closeRT.sizeDelta = new Vector2(30, 30);
+            closeRT.anchoredPosition = new Vector2(-5, -5);
+
+            var closeBG = closeGO.AddComponent<Image>();
+            closeBG.color = new Color(0.38f, 0.11f, 0.11f, 0.9f);
+
+            var closeBtn = closeGO.AddComponent<Button>();
+            closeBtn.targetGraphic = closeBG;
+            closeBtn.navigation = new Navigation { mode = Navigation.Mode.None };
+            closeBtn.onClick.AddListener(Close);
+
+            var labelGO = new GameObject("Label", typeof(RectTransform));
+            labelGO.transform.SetParent(closeGO.transform, false);
+            var labelRT = labelGO.GetComponent<RectTransform>();
+            labelRT.anchorMin = Vector2.zero;
+            labelRT.anchorMax = Vector2.one;
+            labelRT.offsetMin = Vector2.zero;
+            labelRT.offsetMax = Vector2.zero;
+
+            var labelTxt = labelGO.AddComponent<TextMeshProUGUI>();
+            if (_recipeName != null)
+                labelTxt.font = _recipeName.font;
+            labelTxt.text = "X";
+            labelTxt.fontSize = 18;
+            labelTxt.color = Color.white;
+            labelTxt.alignment = TextAlignmentOptions.Center;
+            labelTxt.raycastTarget = false;
+
+            _closeButton = closeGO;
+            closeGO.SetActive(false);
+        }
+
+        // ══════════════════════════════════════════
+        //  REPURPOSE STAR BOX AS 5TH REQUIREMENT SLOT
+        // ══════════════════════════════════════════
+
+        private void RepurposeStarBox(Transform origRoot, InventoryGui invGui)
+        {
+            if (invGui.m_minStationLevelIcon == null || _requirementSlots == null || _requirementSlots.Length == 0)
+                return;
+
+            // The star icon sits inside a "box" container — find it in the clone
+            var clonedStarIcon = FindClonedGO(origRoot, invGui.m_minStationLevelIcon.transform);
+            if (clonedStarIcon == null) return;
+
+            // The box is the parent of the star icon
+            var starBox = clonedStarIcon.transform.parent?.gameObject;
+            if (starBox == null || starBox == _clonedPanel) return;
+
+            // Clear the star box's children (star icon, level text, etc.)
+            for (int i = starBox.transform.childCount - 1; i >= 0; i--)
+                Destroy(starBox.transform.GetChild(i).gameObject);
+
+            // Clone the internal structure from an existing requirement slot into the star box
+            var templateSlot = _requirementSlots[0];
+            if (templateSlot == null) return;
+
+            foreach (Transform child in templateSlot.transform)
+            {
+                var clonedChild = Instantiate(child.gameObject, starBox.transform);
+                clonedChild.name = child.name;
+            }
+
+            // Copy UITooltip if the template has one
+            var srcTooltip = templateSlot.GetComponent<UITooltip>();
+            if (srcTooltip != null && starBox.GetComponent<UITooltip>() == null)
+                starBox.AddComponent<UITooltip>();
+
+            // Match the star box's size to the requirement slots
+            var templateRT = templateSlot.GetComponent<RectTransform>();
+            var starBoxRT = starBox.GetComponent<RectTransform>();
+            starBoxRT.sizeDelta = templateRT.sizeDelta;
+
+            // Close the gap: position the star box right next to the first requirement slot
+            // Calculate slot spacing from the existing requirement slots
+            float slotSpacing = 0f;
+            if (_requirementSlots.Length > 1 && _requirementSlots[1] != null)
+            {
+                var slot0RT = _requirementSlots[0].GetComponent<RectTransform>();
+                var slot1RT = _requirementSlots[1].GetComponent<RectTransform>();
+                slotSpacing = slot1RT.anchoredPosition.x - slot0RT.anchoredPosition.x;
+            }
+            else
+            {
+                slotSpacing = templateRT.sizeDelta.x + 4f;
+            }
+
+            // Place star box one spacing step to the left of slot 0
+            starBoxRT.anchoredPosition = new Vector2(
+                templateRT.anchoredPosition.x - slotSpacing,
+                templateRT.anchoredPosition.y
+            );
+
+            // Insert at beginning of requirement slots array
+            var newSlots = new GameObject[_requirementSlots.Length + 1];
+            newSlots[0] = starBox;
+            System.Array.Copy(_requirementSlots, 0, newSlots, 1, _requirementSlots.Length);
+            _requirementSlots = newSlots;
+
+            // Hide all children initially
+            HideRequirement(starBox.transform);
+
+            StartingClassPlugin.Log("Repurposed star box as 5th requirement slot.");
+        }
+
+        // ══════════════════════════════════════════
+        //  CLASS LIST POPULATION
+        // ══════════════════════════════════════════
+
+        private void PopulateClassList()
+        {
+            var invGui = InventoryGui.instance;
+            if (_recipeListRoot == null || invGui == null || invGui.m_recipeElementPrefab == null)
+                return;
+
+            // Clear previous elements
+            foreach (var elem in _classElements)
+                if (elem != null) Destroy(elem);
+            _classElements.Clear();
+
+            for (int i = 0; i < _classes.Count; i++)
+            {
+                int idx = i;
+                var cls = _classes[i];
+
+                // Instantiate from original recipe element prefab into our cloned list root
+                var element = Instantiate(invGui.m_recipeElementPrefab, _recipeListRoot);
+                element.SetActive(true);
+                element.name = "ClassElement_" + cls.Name;
+
+                // Position exactly like Valheim does in AddRecipeToList
+                var elemRT = element.transform as RectTransform;
+                elemRT.anchoredPosition = new Vector2(0f, i * -_recipeListSpace);
+
+                // Hide class icon (not needed in class list)
+                var iconTr = element.transform.Find("icon");
+                if (iconTr != null)
+                    iconTr.gameObject.SetActive(false);
+
+                // Set class name (like recipe name)
+                var nameTr = element.transform.Find("name");
+                if (nameTr != null)
+                {
+                    var nameTxt = nameTr.GetComponent<TMP_Text>();
+                    if (nameTxt != null)
+                    {
+                        nameTxt.text = cls.Name;
+                        nameTxt.color = Color.white;
+                    }
+                }
+
+                // Hide durability bar (not relevant for classes)
+                var durTr = element.transform.Find("Durability");
+                if (durTr != null) durTr.gameObject.SetActive(false);
+
+                // Hide quality level (not relevant for classes)
+                var qualTr = element.transform.Find("QualityLevel");
+                if (qualTr != null) qualTr.gameObject.SetActive(false);
+
+                // Set selected highlight to inactive
+                var selTr = element.transform.Find("selected");
+                if (selTr != null) selTr.gameObject.SetActive(false);
+
+                // Wire up button click
+                var btn = element.GetComponent<Button>();
+                if (btn != null)
+                {
+                    btn.onClick.RemoveAllListeners();
+                    btn.onClick.AddListener(() => SelectClass(idx));
+                }
+
+                _classElements.Add(element);
+            }
+
+            // Set content height for scrolling (same as Valheim: max of base size or item count * spacing)
+            float contentHeight = _classes.Count * _recipeListSpace;
+            _recipeListRoot.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, contentHeight);
+
+            // Reset scroll to top
+            if (_recipeScrollbar != null)
+                _recipeScrollbar.value = 1f;
+            if (_listScrollRect != null)
+                _listScrollRect.verticalNormalizedPosition = 1f;
         }
 
         // ══════════════════════════════════════════
@@ -434,52 +536,185 @@ namespace StartingClassMod
         {
             if (index < 0 || index >= _classes.Count) return;
             _selectedIndex = index;
+            RefreshHighlights();
             RefreshDetail();
-            RefreshButtonHighlights();
         }
 
-        private void RefreshButtonHighlights()
+        private void RefreshHighlights()
         {
-            for (int i = 0; i < _classBtnBGs.Count; i++)
+            // Toggle "selected" child exactly like Valheim's SetRecipe
+            for (int i = 0; i < _classElements.Count; i++)
             {
-                bool sel = i == _selectedIndex;
-
-                if (_hasButtonSprite)
-                {
-                    _classBtnBGs[i].color = sel
-                        ? new Color(1f, 0.85f, 0.5f)
-                        : Color.white;
-                }
-                else
-                {
-                    _classBtnBGs[i].color = sel ? FallBtnSelect : FallBtnNormal;
-                }
+                var selTr = _classElements[i]?.transform.Find("selected");
+                if (selTr != null)
+                    selTr.gameObject.SetActive(i == _selectedIndex);
             }
+        }
+
+        private void ClearDetail()
+        {
+            if (_recipeIcon != null) _recipeIcon.enabled = false;
+            if (_recipeName != null) _recipeName.enabled = false;
+            if (_recipeDescription != null) _recipeDescription.enabled = false;
+
+            if (_craftButton != null)
+            {
+                _craftButton.interactable = false;
+                if (_craftButtonLabel != null)
+                    _craftButtonLabel.text = "Select a Class";
+            }
+
+            HideAllRequirements();
         }
 
         private void RefreshDetail()
         {
-            bool hasSel = _selectedIndex >= 0 && _selectedIndex < _classes.Count;
-            _placeholder.SetActive(!hasSel);
-            _detailSection.SetActive(hasSel);
-            if (!hasSel) return;
+            if (_selectedIndex < 0 || _selectedIndex >= _classes.Count)
+            {
+                ClearDetail();
+                return;
+            }
 
             var cls = _classes[_selectedIndex];
-            _classNameLabel.text = cls.Name;
-            _classDescLabel.text = cls.Description;
-            _confirmLabel.text = $"Begin as {cls.Name}";
 
-            // Reset scroll to top when switching classes
-            if (_detailScrollRect != null)
-                _detailScrollRect.normalizedPosition = new Vector2(0, 1);
+            // Class icon → recipe icon
+            if (_recipeIcon != null)
+            {
+                Sprite icon = GetItemIcon(cls.IconItemName);
+                if (icon != null)
+                {
+                    _recipeIcon.sprite = icon;
+                    _recipeIcon.enabled = true;
+                }
+                else
+                {
+                    _recipeIcon.enabled = false;
+                }
+            }
 
-            ClearChildren(_equipmentList);
-            foreach (var item in cls.Items)
-                MakeItemRow(_equipmentList, item);
+            // Class name → recipe name
+            if (_recipeName != null)
+            {
+                _recipeName.text = cls.Name;
+                _recipeName.enabled = true;
+            }
 
-            ClearChildren(_skillsList);
-            foreach (var skill in cls.SkillBonuses)
-                MakeSkillRow(_skillsList, skill);
+            // Class description + skill bonuses → recipe description
+            if (_recipeDescription != null)
+            {
+                string desc = cls.Description;
+                if (cls.SkillBonuses.Count > 0)
+                {
+                    desc += "\n\n<color=#66B3E5>Skill Bonuses:</color>";
+                    foreach (var bonus in cls.SkillBonuses)
+                    {
+                        string skillName = FormatPascalCase(bonus.SkillType.ToString());
+                        desc += $"\n  {skillName}  <color=#66B3E5>+{bonus.BonusLevel:0}</color>";
+                    }
+                }
+                _recipeDescription.text = desc;
+                _recipeDescription.enabled = true;
+            }
+
+            // Confirm button → "Begin as X"
+            if (_craftButton != null)
+            {
+                _craftButton.interactable = true;
+                if (_craftButtonLabel != null)
+                    _craftButtonLabel.text = $"Begin as {cls.Name}";
+            }
+
+            // Requirement slots → starting items
+            SetupStartingItems(cls);
+        }
+
+        private void SetupStartingItems(StartingClass cls)
+        {
+            if (_requirementSlots == null) return;
+
+            int slotIndex = 0;
+            for (int i = 0; i < cls.Items.Count && slotIndex < _requirementSlots.Length; i++, slotIndex++)
+            {
+                var slot = _requirementSlots[slotIndex];
+                if (slot == null) continue;
+
+                var item = cls.Items[i];
+                var root = slot.transform;
+
+                // res_icon
+                var iconTr = root.Find("res_icon");
+                if (iconTr != null)
+                {
+                    var img = iconTr.GetComponent<Image>();
+                    if (img != null)
+                    {
+                        Sprite icon = GetItemIcon(item.PrefabName);
+                        if (icon != null)
+                        {
+                            img.sprite = icon;
+                            img.color = Color.white;
+                        }
+                        img.gameObject.SetActive(icon != null);
+                    }
+                }
+
+                // res_name
+                var nameTr = root.Find("res_name");
+                if (nameTr != null)
+                {
+                    var txt = nameTr.GetComponent<TMP_Text>();
+                    if (txt != null)
+                    {
+                        txt.text = GetLocalizedName(item.PrefabName);
+                        txt.color = Color.white;
+                        txt.gameObject.SetActive(true);
+                    }
+                }
+
+                // res_amount
+                var amtTr = root.Find("res_amount");
+                if (amtTr != null)
+                {
+                    var txt = amtTr.GetComponent<TMP_Text>();
+                    if (txt != null)
+                    {
+                        txt.text = item.Quantity.ToString();
+                        txt.color = Color.white;
+                        txt.gameObject.SetActive(true);
+                    }
+                }
+
+                // UITooltip
+                var tooltip = root.GetComponent<UITooltip>();
+                if (tooltip != null)
+                    tooltip.m_text = GetLocalizedName(item.PrefabName);
+            }
+
+            // Hide remaining unused slots
+            for (int i = slotIndex; i < _requirementSlots.Length; i++)
+            {
+                if (_requirementSlots[i] != null)
+                    HideRequirement(_requirementSlots[i].transform);
+            }
+        }
+
+        private void HideRequirement(Transform root)
+        {
+            var iconTr = root.Find("res_icon");
+            if (iconTr != null) iconTr.gameObject.SetActive(false);
+            var nameTr = root.Find("res_name");
+            if (nameTr != null) nameTr.gameObject.SetActive(false);
+            var amtTr = root.Find("res_amount");
+            if (amtTr != null) amtTr.gameObject.SetActive(false);
+            var tooltip = root.GetComponent<UITooltip>();
+            if (tooltip != null) tooltip.m_text = "";
+        }
+
+        private void HideAllRequirements()
+        {
+            if (_requirementSlots == null) return;
+            foreach (var slot in _requirementSlots)
+                if (slot != null) HideRequirement(slot.transform);
         }
 
         private void ConfirmSelection()
@@ -499,301 +734,61 @@ namespace StartingClassMod
         }
 
         // ══════════════════════════════════════════
-        //  ELEMENT BUILDERS
+        //  CLONE HELPERS
         // ══════════════════════════════════════════
 
-        private void MakeClassCard(Transform parent, StartingClass cls, System.Action onClick)
+        /// <summary>
+        /// Computes the relative transform path from originalRoot to originalChild,
+        /// then finds the same path in the cloned panel and returns the component.
+        /// </summary>
+        private T FindCloned<T>(Transform originalRoot, Transform originalChild) where T : Component
         {
-            var rt = MakeRect("Card_" + cls.Name, parent);
-            SetLayout(rt.gameObject, prefH: 52);
-
-            // Background directly on root
-            Image bg;
-            if (_hasButtonSprite)
+            if (originalChild == null) return null;
+            string path = GetRelativePath(originalRoot, originalChild);
+            if (path == null) return null;
+            if (path.Length == 0) return _clonedPanel.GetComponent<T>();
+            var found = _clonedPanel.transform.Find(path);
+            if (found == null)
             {
-                bg = AddImage(rt, Color.white);
-                bg.sprite = _buttonSprite;
-                bg.type = Image.Type.Sliced;
+                StartingClassPlugin.LogWarning($"Cloned element not found at path: '{path}'");
+                return null;
             }
-            else
-            {
-                bg = AddImage(rt, FallBtnNormal);
-            }
-            _classBtnBGs.Add(bg);
-
-            var btn = rt.gameObject.AddComponent<Button>();
-            btn.targetGraphic = bg;
-            btn.navigation = new Navigation { mode = Navigation.Mode.None };
-
-            if (_hasButtonSprite)
-            {
-                btn.colors = _buttonCB;
-            }
-            else
-            {
-                var cb = btn.colors;
-                cb.normalColor = Color.white;
-                cb.highlightedColor = new Color(1.5f, 1.4f, 1.2f);
-                cb.pressedColor = new Color(1.2f, 1.1f, 1.05f);
-                cb.fadeDuration = 0.08f;
-                btn.colors = cb;
-            }
-            btn.onClick.AddListener(() => onClick());
-
-            // Horizontal layout: icon | name
-            var cardContent = MakeRect("CardContent", rt);
-            Stretch(cardContent);
-            var hl = cardContent.gameObject.AddComponent<HorizontalLayoutGroup>();
-            hl.spacing = 8;
-            hl.childForceExpandWidth = false;
-            hl.childForceExpandHeight = false;
-            hl.childControlWidth = true;
-            hl.childControlHeight = true;
-            hl.childAlignment = TextAnchor.MiddleLeft;
-            hl.padding = new RectOffset(8, 8, 4, 4);
-
-            // Icon with square background
-            var iconSlot = MakeRect("IconSlot", cardContent);
-            SetLayout(iconSlot.gameObject, prefW: 36, prefH: 36, minW: 36, minH: 36);
-
-            if (_slotSprite != null)
-            {
-                var slotImg = AddImage(iconSlot, _slotColor);
-                slotImg.sprite = _slotSprite;
-                slotImg.type = Image.Type.Sliced;
-                slotImg.raycastTarget = false;
-            }
-            else
-            {
-                var slotImg = AddImage(iconSlot, FallIconBG);
-                slotImg.raycastTarget = false;
-            }
-
-            Sprite icon = GetItemIcon(cls.IconItemName);
-            if (icon != null)
-            {
-                var iconRT = MakeRect("Icon", iconSlot);
-                Stretch(iconRT, 2);
-                var iconImg = AddImage(iconRT, Color.white);
-                iconImg.sprite = icon;
-                iconImg.preserveAspect = true;
-                iconImg.raycastTarget = false;
-            }
-
-            var label = MakeText(cardContent, "Label", cls.Name,
-                                 14, ColTextBright, TextAlignmentOptions.Left, FontStyles.Bold, -1);
-            label.raycastTarget = false;
-            SetLayout(label.gameObject, flexW: 1);
+            return found.GetComponent<T>();
         }
 
-        private void MakeConfirmButton(Transform parent)
+        private GameObject FindClonedGO(Transform originalRoot, Transform originalChild)
         {
-            var rt = MakeStyledButton(parent, "ConfirmBtn", "Begin as ...", FallConfirm, 54,
-                                      () => ConfirmSelection());
-            SetLayout(rt.gameObject, minH: 44);
-            _confirmLabel = rt.GetComponentInChildren<TextMeshProUGUI>();
-        }
-
-        private RectTransform MakeStyledButton(Transform parent, string name, string label,
-                                               Color fallbackColor, float height, System.Action onClick)
-        {
-            var rt = MakeRect(name, parent);
-            SetLayout(rt.gameObject, prefH: height);
-
-            Image bg;
-            if (_hasButtonSprite)
+            if (originalChild == null) return null;
+            string path = GetRelativePath(originalRoot, originalChild);
+            if (path == null) return null;
+            if (path.Length == 0) return _clonedPanel;
+            var found = _clonedPanel.transform.Find(path);
+            if (found == null)
             {
-                bg = AddImage(rt, Color.white);
-                bg.sprite = _buttonSprite;
-                bg.type = Image.Type.Sliced;
+                StartingClassPlugin.LogWarning($"Cloned GO not found at path: '{path}'");
+                return null;
             }
-            else
+            return found.gameObject;
+        }
+
+        private void HideInClone(Transform originalRoot, Transform originalChild)
+        {
+            if (originalChild == null) return;
+            var go = FindClonedGO(originalRoot, originalChild);
+            if (go != null) go.SetActive(false);
+        }
+
+        private static string GetRelativePath(Transform root, Transform child)
+        {
+            var parts = new List<string>();
+            var current = child;
+            while (current != null && current != root)
             {
-                bg = AddImage(rt, fallbackColor);
+                parts.Insert(0, current.name);
+                current = current.parent;
             }
-
-            var btn = rt.gameObject.AddComponent<Button>();
-            btn.targetGraphic = bg;
-            btn.navigation = new Navigation { mode = Navigation.Mode.None };
-
-            if (_hasButtonSprite)
-            {
-                btn.colors = _buttonCB;
-            }
-            else
-            {
-                var cb = btn.colors;
-                cb.normalColor = Color.white;
-                cb.highlightedColor = new Color(1.35f, 1.35f, 1.35f);
-                cb.pressedColor = new Color(0.85f, 0.85f, 0.85f);
-                cb.fadeDuration = 0.08f;
-                btn.colors = cb;
-            }
-            btn.onClick.AddListener(() => onClick());
-
-            var txt = MakeText(rt, "Label", label, height > 40 ? 18 : 15,
-                               ColGold, TextAlignmentOptions.Center, FontStyles.Bold, -1);
-            Stretch(txt.rectTransform);
-            txt.raycastTarget = false;
-
-            return rt;
-        }
-
-        private void MakeItemRow(Transform parent, StartingItem item)
-        {
-            var row = MakeRect("Item_" + item.PrefabName, parent);
-            SetLayout(row.gameObject, prefH: 34);
-            var hl = row.gameObject.AddComponent<HorizontalLayoutGroup>();
-            hl.spacing = 8;
-            hl.childForceExpandWidth = false;
-            hl.childForceExpandHeight = false;
-            hl.childControlWidth = true;
-            hl.childControlHeight = true;
-            hl.childAlignment = TextAnchor.MiddleLeft;
-
-            // Icon slot
-            var iconSlot = MakeRect("IconSlot", row);
-            SetLayout(iconSlot.gameObject, prefW: 32, prefH: 32, minW: 32, minH: 32);
-
-            if (_slotSprite != null)
-            {
-                var slotImg = AddImage(iconSlot, _slotColor);
-                slotImg.sprite = _slotSprite;
-                slotImg.type = Image.Type.Sliced;
-                slotImg.raycastTarget = false;
-            }
-            else
-            {
-                var slotImg = AddImage(iconSlot, FallIconBG);
-                slotImg.raycastTarget = false;
-            }
-
-            Sprite icon = GetItemIcon(item.PrefabName);
-            if (icon != null)
-            {
-                var iconRT = MakeRect("Icon", iconSlot);
-                Stretch(iconRT, 2);
-                var img = AddImage(iconRT, Color.white);
-                img.sprite = icon;
-                img.preserveAspect = true;
-                img.raycastTarget = false;
-            }
-
-            // Item name + quantity
-            string displayName = GetLocalizedName(item.PrefabName);
-            string qty = item.Quantity > 1 ? $"  <color=#B0B0B0>x{item.Quantity}</color>" : "";
-            var txt = MakeText(row, "Name", $"{displayName}{qty}",
-                               14, ColTextBright, TextAlignmentOptions.Left, FontStyles.Normal, -1);
-            txt.richText = true;
-            txt.raycastTarget = false;
-            SetLayout(txt.gameObject, flexW: 1);
-        }
-
-        private void MakeSkillRow(Transform parent, SkillBonus skill)
-        {
-            var row = MakeRect("Skill_" + skill.SkillType, parent);
-            SetLayout(row.gameObject, prefH: 24);
-            var hl = row.gameObject.AddComponent<HorizontalLayoutGroup>();
-            hl.spacing = 6;
-            hl.childForceExpandWidth = false;
-            hl.childForceExpandHeight = false;
-            hl.childControlWidth = true;
-            hl.childControlHeight = true;
-            hl.childAlignment = TextAnchor.MiddleLeft;
-
-            string skillName = FormatPascalCase(skill.SkillType.ToString());
-            MakeText(row, "Name", $"\u2022  {skillName}", 14, ColText,
-                     TextAlignmentOptions.Left, FontStyles.Normal, -1).raycastTarget = false;
-            MakeText(row, "Bonus", $"+{skill.BonusLevel:0}", 14, ColSkill,
-                     TextAlignmentOptions.Left, FontStyles.Bold, -1).raycastTarget = false;
-        }
-
-        private void MakeSeparator(Transform parent)
-        {
-            var sep = MakeRect("Sep", parent);
-            SetLayout(sep.gameObject, prefH: 1);
-            var img = AddImage(sep, ColSeparator);
-            img.raycastTarget = false;
-        }
-
-        // ══════════════════════════════════════════
-        //  LOW-LEVEL HELPERS
-        // ══════════════════════════════════════════
-
-        private static RectTransform MakeRect(string name, Transform parent)
-        {
-            var go = new GameObject(name, typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-            return go.GetComponent<RectTransform>();
-        }
-
-        private static void Stretch(RectTransform rt, int inset = 0)
-        {
-            rt.anchorMin = Vector2.zero;
-            rt.anchorMax = Vector2.one;
-            rt.offsetMin = new Vector2(inset, inset);
-            rt.offsetMax = new Vector2(-inset, -inset);
-        }
-
-        private static void AnchorCenter(RectTransform rt, float w, float h)
-        {
-            rt.anchorMin = new Vector2(0.5f, 0.5f);
-            rt.anchorMax = new Vector2(0.5f, 0.5f);
-            rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = new Vector2(w, h);
-        }
-
-        private static Image AddImage(RectTransform rt, Color color)
-        {
-            return AddImage(rt.gameObject, color);
-        }
-
-        private static Image AddImage(GameObject go, Color color)
-        {
-            var img = go.AddComponent<Image>();
-            img.color = color;
-            img.raycastTarget = true;
-            return img;
-        }
-
-        private TextMeshProUGUI MakeText(Transform parent, string name, string text,
-                                          float size, Color color, TextAlignmentOptions align,
-                                          FontStyles style, float prefHeight)
-        {
-            var rt = MakeRect(name, parent);
-            if (prefHeight > 0)
-                SetLayout(rt.gameObject, prefH: prefHeight);
-
-            var tmp = rt.gameObject.AddComponent<TextMeshProUGUI>();
-            tmp.font = _font;
-            tmp.text = text;
-            tmp.fontSize = size;
-            tmp.color = color;
-            tmp.alignment = align;
-            tmp.fontStyle = style;
-            tmp.raycastTarget = false;
-            tmp.overflowMode = TextOverflowModes.Ellipsis;
-            return tmp;
-        }
-
-        private static void SetLayout(GameObject go,
-                                       float prefH = -1, float minH = -1, float flexH = -1,
-                                       float prefW = -1, float minW = -1, float flexW = -1)
-        {
-            var le = go.GetComponent<LayoutElement>();
-            if (le == null) le = go.AddComponent<LayoutElement>();
-            if (prefH >= 0) le.preferredHeight = prefH;
-            if (minH >= 0) le.minHeight = minH;
-            if (flexH >= 0) le.flexibleHeight = flexH;
-            if (prefW >= 0) le.preferredWidth = prefW;
-            if (minW >= 0) le.minWidth = minW;
-            if (flexW >= 0) le.flexibleWidth = flexW;
-        }
-
-        private static void ClearChildren(Transform parent)
-        {
-            for (int i = parent.childCount - 1; i >= 0; i--)
-                Destroy(parent.GetChild(i).gameObject);
+            if (current != root) return null; // child is not a descendant of root
+            return string.Join("/", parts);
         }
 
         // ══════════════════════════════════════════

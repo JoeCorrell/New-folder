@@ -25,26 +25,8 @@ namespace StartingClassMod
                 // Only process the local player
                 if (__instance != Player.m_localPlayer) return;
 
-                // Check if this character was in the middle of a class selection (crash recovery)
-                if (ClassPersistence.IsPending(__instance))
-                {
-                    StartingClassPlugin.Log("Found pending class selection (possible crash recovery). " +
-                                           "Reopening class selection UI.");
-                    ClassPersistence.ClearPending(__instance);
-                    StartingClassPlugin.Instance.ShowClassSelection(false);
-                    return;
-                }
-
-                // Check if the character has already selected a class
-                if (ClassPersistence.HasSelectedClass(__instance))
-                {
-                    string className = ClassPersistence.GetSelectedClassName(__instance);
-                    StartingClassPlugin.Log($"Character already has class '{className}'. Skipping selection.");
-                    return;
-                }
-
-                // New character entering world for the first time - show class selection
-                StartingClassPlugin.Log("New character detected. Opening class selection UI.");
+                // Always open the class selection UI on world start (for testing)
+                StartingClassPlugin.Log("Opening class selection UI.");
                 StartingClassPlugin.Instance.ShowClassSelection(false);
             }
         }
