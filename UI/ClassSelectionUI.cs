@@ -285,6 +285,19 @@ namespace StartingClassMod
             // ══════════════════════════════════════════
             RepurposeStarBox(origRoot, invGui);
 
+            // Nudge all requirement slots left to center them above the confirm button
+            if (_requirementSlots != null)
+            {
+                float nudge = -7f;
+                foreach (var slot in _requirementSlots)
+                {
+                    if (slot == null) continue;
+                    var rt = slot.GetComponent<RectTransform>();
+                    if (rt != null)
+                        rt.anchoredPosition += new Vector2(nudge, 0f);
+                }
+            }
+
             // Remove UIGroupHandler from clone to avoid input conflicts with original inventory
             foreach (var c in _clonedPanel.GetComponentsInChildren<UIGroupHandler>(true))
                 Destroy(c);
