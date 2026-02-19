@@ -34,7 +34,6 @@ namespace StartingClassMod
         private RectTransform _recipeListRoot;
         private Button _craftButton;
         private TMP_Text _craftButtonLabel;
-        private GameObject[] _requirementSlots;
         private Scrollbar _recipeScrollbar;
         private ScrollRect _listScrollRect;
         private ScrollRectEnsureVisible _ensureVisible;
@@ -55,6 +54,10 @@ namespace StartingClassMod
         // ── Skills panel ──
         private GameObject _skillsPanel;
         private TMP_Text _skillsText;
+        private ScrollRect _skillsScrollRect;
+        private ScrollRect _aboutScrollRect;
+        private Button _unlockButton;
+        private TMP_Text _unlockButtonLabel;
 
         // ── Class list elements (instantiated from recipe element prefab) ──
         private readonly List<GameObject> _classElements = new List<GameObject>();
@@ -64,8 +67,6 @@ namespace StartingClassMod
         private GameObject _previewCamGO;
         private Camera _previewCamera;
         private GameObject _previewClone;
-        private GameObject _previewLightGO;
-        private Light _previewLight;
         private static readonly Vector3 PreviewSpawnPos = new Vector3(10000f, 5000f, 10000f);
 
         // ── Preview rotation ──
@@ -99,8 +100,6 @@ namespace StartingClassMod
             _previewRotation = 0f;
             if (_previewCamera != null)
                 _previewCamera.enabled = true;
-            if (_previewLight != null)
-                _previewLight.enabled = true;
 
             PopulateClassList();
 
@@ -117,8 +116,6 @@ namespace StartingClassMod
             _isVisible = false;
             if (_previewCamera != null)
                 _previewCamera.enabled = false;
-            if (_previewLight != null)
-                _previewLight.enabled = false;
             ClearPreviewClone();
             if (_canvasGO != null)
                 _canvasGO.SetActive(false);
@@ -131,8 +128,17 @@ namespace StartingClassMod
         private void Update()
         {
             if (!_isVisible) return;
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+
+            // Only force cursor visible when using mouse/keyboard — hide on gamepad
+            if (!ZInput.IsGamepadActive())
+            {
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
+            }
+            else
+            {
+                Cursor.visible = false;
+            }
 
             // Keyboard close
             if (_isFromCommand && Input.GetKeyDown(KeyCode.Escape))
@@ -182,7 +188,6 @@ namespace StartingClassMod
             if (_previewCamera != null) _previewCamera.enabled = false;
             ClearPreviewClone();
             if (_previewCamGO != null) Destroy(_previewCamGO);
-            if (_previewLightGO != null) Destroy(_previewLightGO);
             if (_previewRT != null) { _previewRT.Release(); Destroy(_previewRT); }
             if (_canvasGO != null) Destroy(_canvasGO);
         }
@@ -237,10 +242,10 @@ namespace StartingClassMod
             ScrollRect activeScroll = null;
             if (_activeTab == 0 && _descriptionScrollRect != null)
                 activeScroll = _descriptionScrollRect;
-            else if (_activeTab == 1 && _skillsPanel != null)
-                activeScroll = _skillsPanel.GetComponentInChildren<ScrollRect>();
-            else if (_activeTab == 2 && _aboutPanel != null)
-                activeScroll = _aboutPanel.GetComponentInChildren<ScrollRect>();
+            else if (_activeTab == 1 && _skillsScrollRect != null)
+                activeScroll = _skillsScrollRect;
+            else if (_activeTab == 2 && _aboutScrollRect != null)
+                activeScroll = _aboutScrollRect;
 
             if (activeScroll != null)
             {
@@ -431,14 +436,16 @@ namespace StartingClassMod
 
             // Description scroll area is built from scratch later (crafting UI has none).
 
-            // Find requirement slots in the clone
+            // Hide requirement slots — starting gear is shown in the description text instead
             if (invGui.m_recipeRequirementList != null)
             {
-                _requirementSlots = new GameObject[invGui.m_recipeRequirementList.Length];
                 for (int i = 0; i < invGui.m_recipeRequirementList.Length; i++)
                 {
                     if (invGui.m_recipeRequirementList[i] != null)
-                        _requirementSlots[i] = FindClonedGO(origRoot, invGui.m_recipeRequirementList[i].transform);
+                    {
+                        var slotGO = FindClonedGO(origRoot, invGui.m_recipeRequirementList[i].transform);
+                        if (slotGO != null) slotGO.SetActive(false);
+                    }
                 }
             }
 
@@ -473,24 +480,8 @@ namespace StartingClassMod
             HideInClone(origRoot, invGui.m_upgradeItemNextQuality?.transform);
             HideInClone(origRoot, invGui.m_upgradeItemIndex?.transform);
 
-            // ══════════════════════════════════════════
-            //  Repurpose star/quality box as 5th requirement slot
-            // ══════════════════════════════════════════
-            RepurposeStarBox(origRoot, invGui);
-
-            // Nudge all requirement slots left to center them above the confirm button
-            if (_requirementSlots != null)
-            {
-                float nudge = -7f;
-                foreach (var slot in _requirementSlots)
-                {
-                    if (slot == null) continue;
-                    var rt = slot.GetComponent<RectTransform>();
-                    if (rt != null)
-                        rt.anchoredPosition += new Vector2(nudge, 0f);
-                }
-            }
-
+            // Hide the star/quality box (no longer used)
+            HideInClone(origRoot, invGui.m_minStationLevelIcon?.transform?.parent);
 
             // Remove UIGroupHandler from clone to avoid input conflicts with original inventory
             foreach (var c in _clonedPanel.GetComponentsInChildren<UIGroupHandler>(true))
@@ -641,6 +632,9 @@ namespace StartingClassMod
                     _craftButtonLabel.gameObject.SetActive(true);
                     _craftButtonLabel.text = "Select a Class";
                 }
+
+                // Remove button hint children (key_bkg images, gamepad prompts, etc.)
+                StripButtonHints(_craftButton.gameObject, _craftButtonLabel);
             }
 
             // Clear any existing recipe elements from the clone
@@ -657,17 +651,6 @@ namespace StartingClassMod
                 if (txt == _recipeDescription) continue;
                 if (txt == _craftButtonLabel) continue;
                 if (txt == _titleText) continue;
-                // Keep text inside requirement slots
-                bool inSlot = false;
-                if (_requirementSlots != null)
-                {
-                    foreach (var slot in _requirementSlots)
-                    {
-                        if (slot != null && txt.transform.IsChildOf(slot.transform))
-                        { inSlot = true; break; }
-                    }
-                }
-                if (inSlot) continue;
                 // Keep text inside the craft button
                 if (_craftButton != null && txt.transform.IsChildOf(_craftButton.transform)) continue;
                 // Keep text inside the recipe list (class element names)
@@ -697,7 +680,7 @@ namespace StartingClassMod
                 var scrollAreaRT = scrollGO.GetComponent<RectTransform>();
                 scrollAreaRT.anchorMin = new Vector2(0f, 0f);
                 scrollAreaRT.anchorMax = new Vector2(1f, 1f);
-                scrollAreaRT.offsetMin = new Vector2(8f, 145f);  // bottom inset: clears requirements + craft button with gap
+                scrollAreaRT.offsetMin = new Vector2(8f, 85f);  // bottom inset: clears craft button with margin
                 scrollAreaRT.offsetMax = new Vector2(-scrollbarWidth - 4f, -38f); // top inset: clears class name header
                 scrollAreaRT.pivot = new Vector2(0.5f, 0.5f);
                 scrollGO.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.003f);
@@ -797,9 +780,15 @@ namespace StartingClassMod
                 float pw = panelRT.sizeDelta.x;
                 float ph = panelRT.sizeDelta.y;
 
-                _tabClasses = CreateTabButton("Classes", 0, tabListPanel, pw, ph, craftW, craftH, tabTopPad);
-                _tabSkills  = CreateTabButton("Skills",  1, tabDescPanel, pw, ph, craftW, craftH, tabTopPad);
-                _tabAbout   = CreateTabButton("About",   2, tabPreviewPanel, pw, ph, craftW, craftH, tabTopPad);
+                // Compute a uniform Y for all tabs using the highest panel top edge
+                float listTop = tabListPanel.anchorMax.y * ph + tabListPanel.offsetMax.y;
+                float descTop = tabDescPanel.anchorMax.y * ph + tabDescPanel.offsetMax.y;
+                float prevTop = tabPreviewPanel.anchorMax.y * ph + tabPreviewPanel.offsetMax.y;
+                float uniformTabY = Mathf.Max(listTop, Mathf.Max(descTop, prevTop)) + tabTopPad;
+
+                _tabClasses = CreateTabButton("Classes", 0, tabListPanel, pw, ph, craftW, craftH, uniformTabY);
+                _tabSkills  = CreateTabButton("Skills",  1, tabDescPanel, pw, ph, craftW, craftH, uniformTabY);
+                _tabAbout   = CreateTabButton("About",   2, tabPreviewPanel, pw, ph, craftW, craftH, uniformTabY);
 
                 _activeTab = 0;
                 RefreshTabHighlights();
@@ -888,12 +877,9 @@ namespace StartingClassMod
                     aboutTextRT.sizeDelta = Vector2.zero;
 
                     var aboutTxt = aboutTextGO.AddComponent<TextMeshProUGUI>();
-                    // Copy font from existing UI text so TMP can render
-                    if (_recipeDescription != null)
-                    {
-                        aboutTxt.font = _recipeDescription.font;
-                        aboutTxt.fontSharedMaterial = _recipeDescription.fontSharedMaterial;
-                    }
+                    var aboutFont = FindValheimFont();
+                    if (aboutFont != null)
+                        aboutTxt.font = aboutFont;
                     aboutTxt.fontSize = 18f;
                     aboutTxt.color = Color.white;
                     aboutTxt.textWrappingMode = TextWrappingModes.Normal;
@@ -953,6 +939,8 @@ namespace StartingClassMod
 
                     aboutSR.verticalScrollbar = aboutSB;
                     aboutSR.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
+
+                    _aboutScrollRect = aboutSR;
 
                     // Start hidden — Classes tab is default
                     _aboutPanel.SetActive(false);
@@ -1018,11 +1006,9 @@ namespace StartingClassMod
                     skillsTextRT.sizeDelta = Vector2.zero;
 
                     _skillsText = skillsTextGO.AddComponent<TextMeshProUGUI>();
-                    if (_recipeDescription != null)
-                    {
-                        _skillsText.font = _recipeDescription.font;
-                        _skillsText.fontSharedMaterial = _recipeDescription.fontSharedMaterial;
-                    }
+                    var skillsFont = FindValheimFont();
+                    if (skillsFont != null)
+                        _skillsText.font = skillsFont;
                     _skillsText.fontSize = 18f;
                     _skillsText.color = Color.white;
                     _skillsText.textWrappingMode = TextWrappingModes.Normal;
@@ -1083,6 +1069,44 @@ namespace StartingClassMod
                     skillsSR.verticalScrollbar = skillsSB;
                     skillsSR.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
 
+                    _skillsScrollRect = skillsSR;
+
+                    // ── Unlock Skill button at the bottom of the skills panel ──
+                    if (_craftButton != null)
+                    {
+                        var unlockGO = Instantiate(_craftButton.gameObject, _skillsPanel.transform);
+                        unlockGO.name = "UnlockSkillButton";
+
+                        _unlockButton = unlockGO.GetComponent<Button>();
+                        if (_unlockButton != null)
+                        {
+                            _unlockButton.onClick.RemoveAllListeners();
+                            _unlockButton.navigation = new Navigation { mode = Navigation.Mode.None };
+                            _unlockButton.interactable = false;
+                        }
+
+                        _unlockButtonLabel = unlockGO.GetComponentInChildren<TMP_Text>(true);
+                        if (_unlockButtonLabel != null)
+                        {
+                            _unlockButtonLabel.gameObject.SetActive(true);
+                            _unlockButtonLabel.text = "Unlock Skill";
+                        }
+                        StripButtonHints(unlockGO, _unlockButtonLabel);
+
+                        // Position at the bottom of the skills panel, full width with padding
+                        var unlockRT = unlockGO.GetComponent<RectTransform>();
+                        var craftBtnRT = _craftButton.GetComponent<RectTransform>();
+                        float btnH = craftBtnRT != null ? craftBtnRT.rect.height : 30f;
+                        unlockRT.anchorMin = new Vector2(0f, 0f);
+                        unlockRT.anchorMax = new Vector2(1f, 0f);
+                        unlockRT.pivot = new Vector2(0.5f, 0f);
+                        unlockRT.sizeDelta = new Vector2(-24f, btnH); // 12px padding each side
+                        unlockRT.anchoredPosition = new Vector2(0f, 8f);
+
+                        // Raise scroll area bottom to clear the button
+                        skillsScrollRT.offsetMin = new Vector2(12f, btnH + 16f);
+                    }
+
                     _skillsPanel.SetActive(false);
                 }
             }
@@ -1119,7 +1143,6 @@ namespace StartingClassMod
             _previewCamera.farClipPlane = 10f;
             _previewCamera.depth = -2;
             _previewCamera.enabled = false;
-            _previewCamGO.AddComponent<PreviewCameraHelper>();
 
             int charLayer = LayerMask.NameToLayer("character");
             if (charLayer < 0) charLayer = 9;
@@ -1131,25 +1154,6 @@ namespace StartingClassMod
             Vector3 cloneCenter = PreviewSpawnPos + Vector3.up * 0.85f;
             _previewCamGO.transform.position = cloneCenter + Vector3.forward * 5.0f;
             _previewCamGO.transform.LookAt(cloneCenter);
-
-            // ── Single directional light — clean neutral illumination ──
-            _previewLightGO = new GameObject("ClassPreview_Light");
-            DontDestroyOnLoad(_previewLightGO);
-            _previewLightGO.transform.position = PreviewSpawnPos + new Vector3(0f, 3f, 2f);
-            _previewLightGO.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
-            _previewLight = _previewLightGO.AddComponent<Light>();
-            _previewLight.type = LightType.Directional;
-            _previewLight.color = new Color(1f, 0.98f, 0.95f);
-            _previewLight.intensity = 1.1f;
-            _previewLight.cullingMask = previewMask;
-            _previewLight.enabled = false;
-
-            // Strip post-processing from preview camera so scene colour grading doesn't desaturate
-            foreach (var mb in _previewCamGO.GetComponents<MonoBehaviour>())
-            {
-                if (mb is PreviewCameraHelper) continue;
-                Destroy(mb);
-            }
 
             // ── Background panel using Decription panel's style ──
             var descPanel = _clonedPanel.transform.Find("Decription");
@@ -1348,7 +1352,7 @@ namespace StartingClassMod
                     var prefab = ZNetScene.instance?.GetPrefab(prefabName);
                     if (prefab == null) continue;
                     var drop = prefab.GetComponent<ItemDrop>();
-                    if (drop == null) continue;
+                    if (drop == null || drop.m_itemData == null) continue;
 
                     switch (drop.m_itemData.m_shared.m_itemType)
                     {
@@ -1416,76 +1420,6 @@ namespace StartingClassMod
 
         // ══════════════════════════════════════════
         //  REPURPOSE STAR BOX AS 5TH REQUIREMENT SLOT
-        // ══════════════════════════════════════════
-
-        private void RepurposeStarBox(Transform origRoot, InventoryGui invGui)
-        {
-            if (invGui.m_minStationLevelIcon == null || _requirementSlots == null || _requirementSlots.Length == 0)
-                return;
-
-            // The star icon sits inside a "box" container — find it in the clone
-            var clonedStarIcon = FindClonedGO(origRoot, invGui.m_minStationLevelIcon.transform);
-            if (clonedStarIcon == null) return;
-
-            // The box is the parent of the star icon
-            var starBox = clonedStarIcon.transform.parent?.gameObject;
-            if (starBox == null || starBox == _clonedPanel) return;
-
-            // Clear the star box's children (star icon, level text, etc.)
-            for (int i = starBox.transform.childCount - 1; i >= 0; i--)
-                DestroyImmediate(starBox.transform.GetChild(i).gameObject);
-
-            // Clone the internal structure from an existing requirement slot into the star box
-            var templateSlot = _requirementSlots[0];
-            if (templateSlot == null) return;
-
-            foreach (Transform child in templateSlot.transform)
-            {
-                var clonedChild = Instantiate(child.gameObject, starBox.transform);
-                clonedChild.name = child.name;
-            }
-
-            // Copy UITooltip if the template has one
-            var srcTooltip = templateSlot.GetComponent<UITooltip>();
-            if (srcTooltip != null && starBox.GetComponent<UITooltip>() == null)
-                starBox.AddComponent<UITooltip>();
-
-            // Match the star box's size to the requirement slots
-            var templateRT = templateSlot.GetComponent<RectTransform>();
-            var starBoxRT = starBox.GetComponent<RectTransform>();
-            starBoxRT.sizeDelta = templateRT.sizeDelta;
-
-            // Close the gap: position the star box right next to the first requirement slot
-            // Calculate slot spacing from the existing requirement slots
-            float slotSpacing = 0f;
-            if (_requirementSlots.Length > 1 && _requirementSlots[1] != null)
-            {
-                var slot0RT = _requirementSlots[0].GetComponent<RectTransform>();
-                var slot1RT = _requirementSlots[1].GetComponent<RectTransform>();
-                slotSpacing = slot1RT.anchoredPosition.x - slot0RT.anchoredPosition.x;
-            }
-            else
-            {
-                slotSpacing = templateRT.sizeDelta.x + 4f;
-            }
-
-            // Place star box one spacing step to the left of slot 0
-            starBoxRT.anchoredPosition = new Vector2(
-                templateRT.anchoredPosition.x - slotSpacing,
-                templateRT.anchoredPosition.y
-            );
-
-            // Insert at beginning of requirement slots array
-            var newSlots = new GameObject[_requirementSlots.Length + 1];
-            newSlots[0] = starBox;
-            System.Array.Copy(_requirementSlots, 0, newSlots, 1, _requirementSlots.Length);
-            _requirementSlots = newSlots;
-
-            // Hide all children initially
-            HideRequirement(starBox.transform);
-
-        }
-
         // ══════════════════════════════════════════
         //  CLASS LIST POPULATION
         // ══════════════════════════════════════════
@@ -1714,6 +1648,10 @@ namespace StartingClassMod
             if (descPanel != null) descPanel.gameObject.SetActive(showClasses);
             if (previewPanel != null) previewPanel.gameObject.SetActive(showClasses);
 
+            // Disable preview camera when not visible to save GPU time
+            if (_previewCamera != null)
+                _previewCamera.enabled = showClasses;
+
             // Toggle the skills panel (spans description + preview columns)
             if (_skillsPanel != null) _skillsPanel.SetActive(showSkills);
             if (showSkills) RefreshSkillsPanel();
@@ -1740,9 +1678,11 @@ namespace StartingClassMod
                 foreach (var a in cls.Abilities)
                     totalCost += a.PointCost;
 
-            // Header with class name and points display
-            sb.AppendLine($"<size=24><color=#D4A24E>{cls.Name} \u2014 Skill Tree</color></size>");
-            sb.AppendLine($"<size=18>Available: <color=#8AE58A>0</color>  |  Total Needed: <color=#D4A24E>{totalCost}</color></size>");
+            // Header
+            sb.AppendLine($"<align=center><size=26><color=#D4A24E>{cls.Name}</color></size></align>");
+            sb.AppendLine($"<align=center><size=16><color=#AAAAAA>Skill Tree</color></size></align>");
+            sb.AppendLine();
+            sb.AppendLine($"<align=center><size=17>Available: <color=#8AE58A>0</color>  \u2022  Total Needed: <color=#D4A24E>{totalCost}</color></size></align>");
             sb.AppendLine();
 
             if (cls.Abilities == null || cls.Abilities.Count == 0)
@@ -1761,50 +1701,81 @@ namespace StartingClassMod
 
                 if (ability.IsPassive)
                 {
-                    // Passive ability — unlocked, green accents
-                    sb.AppendLine("<color=#8AE58A>━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
-                    sb.AppendLine($"  <size=20><color=#8AE58A>\u2605 {ability.Name}</color></size>  <size=15><color=#8AE58A>({tierLabel} \u2014 Unlocked)</color></size>");
-                    sb.AppendLine($"  <size=17>{ability.Description}</size>");
+                    // ── Passive: unlocked, green ──
+                    sb.AppendLine("<color=#8AE58A>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
+                    sb.AppendLine($"<size=22><color=#8AE58A>\u2605 {ability.Name}</color></size>");
+                    sb.AppendLine($"<size=14><color=#8AE58A>{tierLabel} \u2014 Unlocked</color></size>");
+                    sb.AppendLine();
+                    sb.AppendLine($"<size=16>{ability.Description}</size>");
 
-                    // Show related skill bonuses
+                    // Skill bonuses
                     if (cls.SkillBonuses != null && cls.SkillBonuses.Count > 0)
                     {
-                        sb.Append("  <size=16><color=#8AE58A>");
+                        sb.AppendLine();
+                        sb.Append("<size=15><color=#8AE58A>");
                         for (int j = 0; j < cls.SkillBonuses.Count; j++)
                         {
-                            if (j > 0) sb.Append("  |  ");
+                            if (j > 0) sb.Append("  \u2022  ");
                             string skillName = FormatPascalCase(cls.SkillBonuses[j].SkillType.ToString());
                             sb.Append($"{skillName} +{cls.SkillBonuses[j].BonusLevel:0}");
                         }
                         sb.AppendLine("</color></size>");
                     }
-                    sb.AppendLine("<color=#8AE58A>━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
+                    sb.AppendLine("<color=#8AE58A>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
                 }
                 else
                 {
-                    // Locked ability — color-coded by tier
-                    string borderColor = ability.PointCost >= 50 ? "#8B4513" : "#555555";
-                    string nameColor = ability.PointCost >= 50 ? "#D4A24E" : "#999999";
-                    string descColor = ability.PointCost >= 50 ? "#888888" : "#777777";
+                    // ── Locked ability ──
+                    bool isUltimate = ability.PointCost >= 50;
+                    string borderColor = isUltimate ? "#8B4513" : "#555555";
+                    string nameColor = isUltimate ? "#D4A24E" : "#BBBBBB";
+                    string tierColor = isUltimate ? "#8B4513" : "#777777";
+                    string descColor = isUltimate ? "#999999" : "#888888";
+                    string icon = isUltimate ? "\u25C6" : "\u25C8";
 
-                    sb.AppendLine($"<color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
-                    sb.AppendLine($"  <size=20><color={nameColor}>\u2726 {ability.Name}</color></size>  <size=15><color=#666666>({tierLabel} \u2014 Locked)</color></size>");
-                    sb.AppendLine($"  <size=17><color={descColor}>{ability.Description}</color></size>");
-                    sb.AppendLine($"  <size=16><color=#D4A24E>\u25C6 Cost: {ability.PointCost} Skill Points</color>  <color=#666666>(You have: 0)</color></size>");
-                    sb.AppendLine($"<color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
+                    sb.AppendLine($"<color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
+                    sb.AppendLine($"<size=22><color={nameColor}>{icon} {ability.Name}</color></size>");
+                    sb.AppendLine($"<size=14><color={tierColor}>{tierLabel} \u2022 {ability.PointCost} pts</color></size>");
+                    sb.AppendLine();
+                    sb.AppendLine($"<size=16><color={descColor}>{ability.Description}</color></size>");
+                    sb.AppendLine();
+                    sb.AppendLine($"<size=15><color=#D4A24E>\u25C6 {ability.PointCost} Skill Points</color>  <color=#666666>(You have: 0)</color></size>");
+                    sb.AppendLine($"<color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
                 }
 
-                // Connector between abilities
+                // Connector arrow between abilities
                 if (i < cls.Abilities.Count - 1)
                 {
-                    sb.AppendLine("                    <size=18><color=#666666>\u2502</color></size>");
-                    sb.AppendLine("                    <size=18><color=#666666>\u25BC</color></size>");
+                    sb.AppendLine("<align=center><size=20><color=#666666>\u2502</color></size></align>");
+                    sb.AppendLine("<align=center><size=20><color=#666666>\u25BC</color></size></align>");
                 }
             }
 
             _skillsText.text = sb.ToString();
             _skillsText.ForceMeshUpdate();
             LayoutRebuilder.ForceRebuildLayoutImmediate(_skillsText.rectTransform);
+
+            // Update unlock button — find the next locked ability
+            if (_unlockButton != null)
+            {
+                ClassAbility nextLocked = null;
+                if (cls.Abilities != null)
+                    foreach (var a in cls.Abilities)
+                        if (!a.IsPassive) { nextLocked = a; break; }
+
+                if (nextLocked != null)
+                {
+                    _unlockButton.interactable = false; // placeholder — no points yet
+                    if (_unlockButtonLabel != null)
+                        _unlockButtonLabel.text = $"Unlock {nextLocked.Name} ({nextLocked.PointCost} pts)";
+                }
+                else
+                {
+                    _unlockButton.interactable = false;
+                    if (_unlockButtonLabel != null)
+                        _unlockButtonLabel.text = "All Skills Unlocked";
+                }
+            }
         }
 
         private void RefreshTabHighlights()
@@ -1814,8 +1785,22 @@ namespace StartingClassMod
             {
                 if (tabs[i] == null) continue;
                 var btn = tabs[i].GetComponent<Button>();
-                if (btn != null)
-                    btn.interactable = (i != _activeTab);
+                if (btn == null) continue;
+
+                bool isActive = (i == _activeTab);
+                btn.interactable = true;
+
+                // Disconnect the Button from the Image so it cannot override our color.
+                // Unity's Selectable applies tint to targetGraphic on state changes,
+                // which fights with our manual Image.color assignment.
+                btn.transition = Selectable.Transition.None;
+                btn.targetGraphic = null;
+
+                var img = tabs[i].GetComponent<Image>();
+                if (img != null)
+                    img.color = isActive
+                        ? new Color(0.83f, 0.64f, 0.31f, 1f)    // bright gold (active tab)
+                        : new Color(0.4f, 0.35f, 0.25f, 0.8f);  // dimmed (inactive tab)
             }
         }
 
@@ -1832,8 +1817,6 @@ namespace StartingClassMod
                 if (_craftButtonLabel != null)
                     _craftButtonLabel.text = "Select a Class";
             }
-
-            HideAllRequirements();
         }
 
         private void RefreshDetail()
@@ -1857,19 +1840,36 @@ namespace StartingClassMod
                 _recipeName.enabled = true;
             }
 
-            // Class description + skill bonuses → recipe description
+            // Class description + starting gear + skill bonuses → recipe description
             if (_recipeDescription != null)
             {
                 string desc = cls.Description;
-                if (cls.SkillBonuses.Count > 0)
+
+                // Starting Gear section
+                if (cls.Items != null && cls.Items.Count > 0)
+                {
+                    desc += "\n\n<color=#D4A24E>Starting Gear:</color>";
+                    foreach (var item in cls.Items)
+                    {
+                        string itemName = GetLocalizedName(item.PrefabName);
+                        if (item.Quantity > 1)
+                            desc += $"\n<color=#CCCCCC>\u2022 {itemName} x{item.Quantity}</color>";
+                        else
+                            desc += $"\n<color=#CCCCCC>\u2022 {itemName}</color>";
+                    }
+                }
+
+                // Skill Bonuses section
+                if (cls.SkillBonuses != null && cls.SkillBonuses.Count > 0)
                 {
                     desc += "\n\n<color=#8AE58A>Skill Bonuses:</color>";
                     foreach (var bonus in cls.SkillBonuses)
                     {
                         string skillName = FormatPascalCase(bonus.SkillType.ToString());
-                        desc += $"\n  {skillName}  <color=#8AE58A>+{bonus.BonusLevel:0}</color>";
+                        desc += $"\n<color=#8AE58A>\u2022 {skillName} +{bonus.BonusLevel:0}</color>";
                     }
                 }
+
                 _recipeDescription.text = desc;
                 _recipeDescription.enabled = true;
                 _recipeDescription.ForceMeshUpdate();
@@ -1888,98 +1888,6 @@ namespace StartingClassMod
                 if (_craftButtonLabel != null)
                     _craftButtonLabel.text = $"Begin as {cls.Name}";
             }
-
-            // Requirement slots → starting items
-            SetupStartingItems(cls);
-        }
-
-        private void SetupStartingItems(StartingClass cls)
-        {
-            if (_requirementSlots == null) return;
-
-            int slotIndex = 0;
-            for (int i = 0; i < cls.Items.Count && slotIndex < _requirementSlots.Length; i++, slotIndex++)
-            {
-                var slot = _requirementSlots[slotIndex];
-                if (slot == null) continue;
-
-                var item = cls.Items[i];
-                var root = slot.transform;
-
-                // res_icon
-                var iconTr = root.Find("res_icon");
-                if (iconTr != null)
-                {
-                    var img = iconTr.GetComponent<Image>();
-                    if (img != null)
-                    {
-                        Sprite icon = GetItemIcon(item.PrefabName);
-                        if (icon != null)
-                        {
-                            img.sprite = icon;
-                            img.color = Color.white;
-                        }
-                        img.gameObject.SetActive(icon != null);
-                    }
-                }
-
-                // res_name
-                var nameTr = root.Find("res_name");
-                if (nameTr != null)
-                {
-                    var txt = nameTr.GetComponent<TMP_Text>();
-                    if (txt != null)
-                    {
-                        txt.text = GetLocalizedName(item.PrefabName);
-                        txt.color = Color.white;
-                        txt.gameObject.SetActive(true);
-                    }
-                }
-
-                // res_amount
-                var amtTr = root.Find("res_amount");
-                if (amtTr != null)
-                {
-                    var txt = amtTr.GetComponent<TMP_Text>();
-                    if (txt != null)
-                    {
-                        txt.text = item.Quantity.ToString();
-                        txt.color = Color.white;
-                        txt.gameObject.SetActive(true);
-                    }
-                }
-
-                // UITooltip
-                var tooltip = root.GetComponent<UITooltip>();
-                if (tooltip != null)
-                    tooltip.m_text = GetLocalizedName(item.PrefabName);
-            }
-
-            // Hide remaining unused slots
-            for (int i = slotIndex; i < _requirementSlots.Length; i++)
-            {
-                if (_requirementSlots[i] != null)
-                    HideRequirement(_requirementSlots[i].transform);
-            }
-        }
-
-        private void HideRequirement(Transform root)
-        {
-            var iconTr = root.Find("res_icon");
-            if (iconTr != null) iconTr.gameObject.SetActive(false);
-            var nameTr = root.Find("res_name");
-            if (nameTr != null) nameTr.gameObject.SetActive(false);
-            var amtTr = root.Find("res_amount");
-            if (amtTr != null) amtTr.gameObject.SetActive(false);
-            var tooltip = root.GetComponent<UITooltip>();
-            if (tooltip != null) tooltip.m_text = "";
-        }
-
-        private void HideAllRequirements()
-        {
-            if (_requirementSlots == null) return;
-            foreach (var slot in _requirementSlots)
-                if (slot != null) HideRequirement(slot.transform);
         }
 
         private void ConfirmSelection()
@@ -1997,6 +1905,24 @@ namespace StartingClassMod
 
             ClassApplicator.ApplyClass(player, _classes[_selectedIndex], _isFromCommand);
             Close();
+        }
+
+        /// <summary>Find the Valheim TMP font from existing UI or loaded assets.</summary>
+        private TMP_FontAsset FindValheimFont()
+        {
+            // Try our cloned description text first
+            if (_recipeDescription != null && _recipeDescription.font != null)
+                return _recipeDescription.font;
+            // Try other cloned TMP_Text references
+            if (_recipeName != null && _recipeName.font != null)
+                return _recipeName.font;
+            if (_titleText != null && _titleText.font != null)
+                return _titleText.font;
+            // Fallback: search all loaded TMP fonts for the Valheim font
+            foreach (var f in Resources.FindObjectsOfTypeAll<TMP_FontAsset>())
+                if (f.name.Contains("Valheim") || f.name.Contains("Averia"))
+                    return f;
+            return null;
         }
 
         private static string GetAboutText()
@@ -2024,9 +1950,9 @@ namespace StartingClassMod
 
                 "<size=20><color=#66B3E5>Passive Abilities</color></size>\n" +
                 "Every class has a <color=#D4A24E>passive ability</color> that is always active. " +
-                "These provide unique advantages: the Ranger takes less fall damage, " +
-                "the Berserker gains strength at low health, and the Sailor moves " +
-                "faster on boats. Passives require no activation and work automatically.\n\n" +
+                "These provide unique advantages: the Archer deals bonus damage at range, " +
+                "the Brute staggers enemies harder, and the Explorer moves faster. " +
+                "Passives require no activation and work automatically.\n\n" +
 
                 "<size=20><color=#66B3E5>Locked Abilities</color></size>\n" +
                 "Each class also has a <color=#999999>locked ability</color> shown in grey. " +
@@ -2034,10 +1960,10 @@ namespace StartingClassMod
                 "Keep training your core skills to eventually unlock them.\n\n" +
 
                 "<size=20><color=#66B3E5>Reselecting Your Class</color></size>\n" +
-                "If you change your mind, a server admin can grant access to the " +
-                "<color=#D4A24E>/reclass</color> command, which reopens the selection screen " +
-                "and lets you pick a new class. Your inventory will be cleared " +
-                "and replaced with the new class's starting gear.\n\n" +
+                "If you change your mind, open the console and type " +
+                "<color=#D4A24E>/OpenClassMenu</color> to reopen the selection screen. " +
+                "Use <color=#D4A24E>/OpenClassMenu reset</color> to clear your class data first. " +
+                "On re-selection your inventory will be replaced with the new class's starting gear.\n\n" +
 
                 "<size=16><color=#999999>Choose wisely, Viking. Odin watches.</color></size>";
         }
@@ -2100,7 +2026,7 @@ namespace StartingClassMod
             return string.Join("/", parts);
         }
 
-        private GameObject CreateTabButton(string label, int tabIndex, RectTransform panel, float parentWidth, float parentHeight, float craftBtnWidth, float craftBtnHeight, float topPad)
+        private GameObject CreateTabButton(string label, int tabIndex, RectTransform panel, float parentWidth, float parentHeight, float craftBtnWidth, float craftBtnHeight, float tabY)
         {
             var tabGO = Instantiate(_craftButton.gameObject, _clonedPanel.transform);
             tabGO.name = "Tab_" + label;
@@ -2115,37 +2041,26 @@ namespace StartingClassMod
                 btn.navigation = new Navigation { mode = Navigation.Mode.None };
             }
 
-            // Hide ALL children except the one containing the label text.
-            // The text may be nested (e.g. inside a container), so check IsChildOf.
+            // Set the label text and strip button hints
             var txt = tabGO.GetComponentInChildren<TMP_Text>(true);
-            foreach (Transform child in tabGO.transform)
-            {
-                // Keep the child if the TMP_Text lives inside it (or IS it)
-                if (txt != null && (child.gameObject == txt.gameObject || txt.transform.IsChildOf(child)))
-                {
-                    child.gameObject.SetActive(true);
-                    continue;
-                }
-                child.gameObject.SetActive(false);
-            }
             if (txt != null)
             {
                 txt.text = label;
                 txt.gameObject.SetActive(true);
             }
+            StripButtonHints(tabGO, txt);
 
-            // Position: centered above the panel, same width/height as craft button
+            // Position: centered above the panel, uniform Y for all tabs
             var tabRT = tabGO.GetComponent<RectTransform>();
             float panelLeft = GetRectLeft(panel, parentWidth);
             float panelRight = GetRectRight(panel, parentWidth);
-            float panelTop = panel.anchorMax.y * parentHeight + panel.offsetMax.y;
 
             tabRT.anchorMin = new Vector2(0f, 0f);
             tabRT.anchorMax = new Vector2(0f, 0f);
             tabRT.pivot = new Vector2(0.5f, 0f);
             float cx = (panelLeft + panelRight) / 2f;
             tabRT.sizeDelta = new Vector2(craftBtnWidth, craftBtnHeight);
-            tabRT.anchoredPosition = new Vector2(cx, panelTop + topPad);
+            tabRT.anchoredPosition = new Vector2(cx, tabY);
 
             return tabGO;
         }
@@ -2153,6 +2068,25 @@ namespace StartingClassMod
         // ══════════════════════════════════════════
         //  VALHEIM DATA LOOKUPS
         // ══════════════════════════════════════════
+
+        /// <summary>
+        /// Removes all button hint/prompt children from a cloned Valheim button.
+        /// Keeps only the branch containing the label text; destroys everything else
+        /// (key_bkg images, gamepad icons, extra decorations).
+        /// </summary>
+        private static void StripButtonHints(GameObject buttonGO, TMP_Text labelText)
+        {
+            for (int i = buttonGO.transform.childCount - 1; i >= 0; i--)
+            {
+                var child = buttonGO.transform.GetChild(i);
+                // Keep the child if it IS the text or CONTAINS the text
+                if (labelText != null &&
+                    (child.gameObject == labelText.gameObject || labelText.transform.IsChildOf(child)))
+                    continue;
+                // Destroy everything else (hint images, key backgrounds, etc.)
+                DestroyImmediate(child.gameObject);
+            }
+        }
 
         /// <summary>
         /// Immediately destroys all layout-constraining components on a GameObject.
@@ -2244,7 +2178,7 @@ namespace StartingClassMod
             if (prefab != null)
             {
                 var drop = prefab.GetComponent<ItemDrop>();
-                if (drop != null && Localization.instance != null)
+                if (drop != null && drop.m_itemData != null && Localization.instance != null)
                 {
                     string loc = Localization.instance.Localize(drop.m_itemData.m_shared.m_name);
                     if (!string.IsNullOrEmpty(loc) && !loc.StartsWith("["))
@@ -2265,33 +2199,5 @@ namespace StartingClassMod
             return sb.ToString();
         }
 
-        /// <summary>
-        /// Attached to the preview camera to disable scene fog and control ambient light
-        /// during rendering, preventing the washed-out look caused by Valheim's environment.
-        /// </summary>
-        private class PreviewCameraHelper : MonoBehaviour
-        {
-            private bool _savedFog;
-            private float _savedAmbientIntensity;
-            private Color _savedAmbientLight;
-
-            void OnPreRender()
-            {
-                _savedFog = RenderSettings.fog;
-                _savedAmbientIntensity = RenderSettings.ambientIntensity;
-                _savedAmbientLight = RenderSettings.ambientLight;
-
-                RenderSettings.fog = false;
-                RenderSettings.ambientIntensity = 1.0f;
-                RenderSettings.ambientLight = new Color(0.75f, 0.75f, 0.78f);
-            }
-
-            void OnPostRender()
-            {
-                RenderSettings.fog = _savedFog;
-                RenderSettings.ambientIntensity = _savedAmbientIntensity;
-                RenderSettings.ambientLight = _savedAmbientLight;
-            }
-        }
     }
 }
