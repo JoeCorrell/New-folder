@@ -22,6 +22,7 @@ namespace StartingClassMod
 
         private static readonly List<AbilityPanel> _panels = new List<AbilityPanel>();
         private static string _builtForClass;
+        private static int _builtAbilityCount;
 
         // Cached sprites for each ability icon (loaded from embedded resources)
         private static readonly Dictionary<string, Sprite> _spriteCache = new Dictionary<string, Sprite>();
@@ -62,8 +63,9 @@ namespace StartingClassMod
                 return;
             }
 
-            // Rebuild if class changed
-            if (_panels.Count > 0 && _builtForClass != className)
+            // Rebuild if class changed or new abilities were unlocked
+            int activeCount = CountActiveAbilities(player, className);
+            if (_panels.Count > 0 && (_builtForClass != className || activeCount != _builtAbilityCount))
                 Destroy();
 
             // Lazy-create
@@ -89,6 +91,7 @@ namespace StartingClassMod
                 Object.Destroy(_placeholderTex);
             _placeholderTex = null;
             _builtForClass = null;
+            _builtAbilityCount = 0;
             _spriteCache.Clear();
         }
 
@@ -116,22 +119,29 @@ namespace StartingClassMod
         private static void UpdateAssassinPanels(Player player, string accentHex)
         {
             int panelIdx = 0;
+            int selectedSlot = StartingClassPlugin.SelectedAbilitySlot;
 
             // Marked by Fate panel
             if (AbilityManager.IsAbilityUnlocked(player, "Assassin", 1) && panelIdx < _panels.Count)
             {
                 var p = _panels[panelIdx];
-                p.Root.SetActive(true);
-                p.NameText.text = "Marked by Fate";
+                bool isSelected = (panelIdx == selectedSlot);
+                p.Root.SetActive(isSelected);
 
-                int charges = MarkedByFate.GetChargesRemaining();
-                int active = MarkedByFate.GetActiveMarkCount();
-                if (active > 0)
-                    p.StatusText.text = $"<color=#{accentHex}>{active} Marked</color> | {charges} Left";
-                else if (charges >= 3)
-                    p.StatusText.text = $"<color=#{accentHex}>Ready</color>";
-                else
-                    p.StatusText.text = $"<color=#{accentHex}>{charges} Charges</color>";
+                if (isSelected)
+                {
+                    p.NameText.text = "Marked by Fate";
+                    if (p.Icon != null) p.Icon.color = Color.white;
+
+                    int charges = MarkedByFate.GetChargesRemaining();
+                    int active = MarkedByFate.GetActiveMarkCount();
+                    if (active > 0)
+                        p.StatusText.text = $"<color=#{accentHex}>{active} Marked</color> | {charges} Left";
+                    else if (charges >= 3)
+                        p.StatusText.text = $"<color=#{accentHex}>Ready</color>";
+                    else
+                        p.StatusText.text = $"<color=#{accentHex}>{charges} Charges</color>";
+                }
 
                 panelIdx++;
             }
@@ -140,26 +150,32 @@ namespace StartingClassMod
             if (AbilityManager.IsAbilityUnlocked(player, "Assassin", 5) && panelIdx < _panels.Count)
             {
                 var p = _panels[panelIdx];
-                p.Root.SetActive(true);
-                p.NameText.text = "Blade Dance";
+                bool isSelected = (panelIdx == selectedSlot);
+                p.Root.SetActive(isSelected);
 
-                if (BladeDance.IsActive())
+                if (isSelected)
                 {
-                    float remaining = BladeDance.GetTimeRemaining();
-                    p.StatusText.text = $"<color=#{accentHex}>Active {remaining:0}s</color>";
-                }
-                else
-                {
-                    float cd = BladeDance.GetCooldownRemaining(player);
-                    if (cd > 0f)
+                    p.NameText.text = "Blade Dance";
+                    if (p.Icon != null) p.Icon.color = Color.white;
+
+                    if (BladeDance.IsActive())
                     {
-                        int mins = (int)(cd / 60f);
-                        int secs = (int)(cd % 60f);
-                        p.StatusText.text = $"<color=#999999>{mins}:{secs:D2}</color>";
+                        float remaining = BladeDance.GetTimeRemaining();
+                        p.StatusText.text = $"<color=#{accentHex}>Active {remaining:0}s</color>";
                     }
                     else
                     {
-                        p.StatusText.text = $"<color=#{accentHex}>Ready</color>";
+                        float cd = BladeDance.GetCooldownRemaining(player);
+                        if (cd > 0f)
+                        {
+                            int mins = (int)(cd / 60f);
+                            int secs = (int)(cd % 60f);
+                            p.StatusText.text = $"<color=#999999>{mins}:{secs:D2}</color>";
+                        }
+                        else
+                        {
+                            p.StatusText.text = $"<color=#{accentHex}>Ready</color>";
+                        }
                     }
                 }
 
@@ -175,13 +191,20 @@ namespace StartingClassMod
 
         private static bool HasActiveAbility(Player player, string className)
         {
+            return CountActiveAbilities(player, className) > 0;
+        }
+
+        private static int CountActiveAbilities(Player player, string className)
+        {
+            int count = 0;
             switch (className)
             {
                 case "Assassin":
-                    return AbilityManager.IsAbilityUnlocked(player, "Assassin", 1) ||
-                           AbilityManager.IsAbilityUnlocked(player, "Assassin", 5);
+                    if (AbilityManager.IsAbilityUnlocked(player, "Assassin", 1)) count++;
+                    if (AbilityManager.IsAbilityUnlocked(player, "Assassin", 5)) count++;
+                    break;
             }
-            return false;
+            return count;
         }
 
         private static Color GetClassColor(string className)
@@ -224,7 +247,8 @@ namespace StartingClassMod
                 rt.anchorMin = gpRt.anchorMin;
                 rt.anchorMax = gpRt.anchorMax;
                 rt.pivot = gpRt.pivot;
-                rt.anchoredPosition = gpRt.anchoredPosition + new Vector2((panelWidth + 10f) * (i + 1), 0f);
+                // All panels at same position — only one is visible at a time (ALT to switch)
+                rt.anchoredPosition = gpRt.anchoredPosition + new Vector2(panelWidth + 10f, 0f);
                 rt.sizeDelta = gpRt.sizeDelta;
 
                 var icon = FindChild<Image>(go, "Icon");
@@ -280,6 +304,7 @@ namespace StartingClassMod
             }
 
             _builtForClass = className;
+            _builtAbilityCount = _panels.Count;
             return _panels.Count > 0;
         }
 

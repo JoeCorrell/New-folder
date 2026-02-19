@@ -7,7 +7,7 @@ namespace StartingClassMod
     /// <summary>
     /// Assassin active ability: Blade Dance.
     /// When activated, all dagger/knife attacks deal double damage for 15 seconds.
-    /// 10 minute cooldown. Activated via G key.
+    /// 10 minute cooldown. Activated via Z key (ALT to switch abilities).
     /// Damage doubling is handled in AssassinPatches.Character_RPC_Damage_Patch.
     /// </summary>
     public static class BladeDance
@@ -18,9 +18,17 @@ namespace StartingClassMod
 
         private static float _activeUntil;
 
-        // Cached reflection for non-public EffectList field
+        // Suppress flag — set before triggering gpower animation so the Harmony patch
+        // can block the real guardian power from firing.
+        internal static bool SuppressGuardianPower;
+
+        // Cached reflection for non-public fields
         private static readonly FieldInfo ActivateEffectsField =
             AccessTools.Field(typeof(Player), "m_activatePowerEffects");
+        private static readonly FieldInfo ActivateEffectsPlayerField =
+            AccessTools.Field(typeof(Player), "m_activatePowerEffectsPlayer");
+        private static readonly FieldInfo ZanimField =
+            AccessTools.Field(typeof(Character), "m_zanim");
 
         /// <summary>Whether the damage buff is currently active.</summary>
         public static bool IsActive()
@@ -82,9 +90,59 @@ namespace StartingClassMod
 
         private static void PlayActivateEffects(Player player)
         {
-            if (ActivateEffectsField == null) return;
-            var effects = ActivateEffectsField.GetValue(player) as EffectList;
-            effects?.Create(player.transform.position, player.transform.rotation, player.transform);
+            // Set suppress flag so our Harmony patch blocks the real guardian power
+            SuppressGuardianPower = true;
+
+            // Trigger the raise-hands animation (same visual as forsaken power)
+            var zanim = ZanimField?.GetValue(player) as ZSyncAnimation;
+            if (zanim != null)
+                zanim.SetTrigger("gpower");
+
+            // Play world-space activation effects (particles)
+            if (ActivateEffectsField != null)
+            {
+                var effects = ActivateEffectsField.GetValue(player) as EffectList;
+                effects?.Create(player.transform.position, player.transform.rotation, player.transform);
+            }
+
+            // Play player-attached activation effects (sound + aura)
+            if (ActivateEffectsPlayerField != null)
+            {
+                var effects = ActivateEffectsPlayerField.GetValue(player) as EffectList;
+                effects?.Create(player.transform.position, player.transform.rotation, player.transform);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Blocks the real guardian power from activating when Blade Dance
+    /// triggers the gpower animation.
+    /// </summary>
+    [HarmonyPatch(typeof(Player), "StartGuardianPower")]
+    static class BladeDance_SuppressGuardianPower_Patch
+    {
+        static bool Prefix()
+        {
+            if (BladeDance.SuppressGuardianPower)
+            {
+                BladeDance.SuppressGuardianPower = false;
+                return false; // skip real guardian power
+            }
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(Player), "ActivateGuardianPower")]
+    static class BladeDance_SuppressActivateGuardian_Patch
+    {
+        static bool Prefix()
+        {
+            if (BladeDance.SuppressGuardianPower)
+            {
+                BladeDance.SuppressGuardianPower = false;
+                return false;
+            }
+            return true;
         }
     }
 }

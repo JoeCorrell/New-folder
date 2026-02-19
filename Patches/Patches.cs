@@ -209,11 +209,22 @@ namespace StartingClassMod
             static bool Prefix(ref bool __result, Player __instance)
             {
                 if (__instance != Player.m_localPlayer) return true;
+
+                // Block input when class menu is open
                 if (StartingClassPlugin.Instance != null && StartingClassPlugin.Instance.IsClassMenuOpen)
                 {
                     __result = false;
-                    return false; // Skip original
+                    return false;
                 }
+
+                // Block input for the frame a controller combo (RB+X/Y) was consumed,
+                // so the game doesn't also process the X/Y press as attack/interact.
+                if (StartingClassPlugin.ComboConsumedFrame == UnityEngine.Time.frameCount)
+                {
+                    __result = false;
+                    return false;
+                }
+
                 return true;
             }
         }

@@ -15,6 +15,16 @@ namespace StartingClassMod
         private Harmony _harmony;
         private ClassSelectionUI _classSelectionUI;
 
+        // Ability slot selection — ALT cycles, Z activates
+        private static int _selectedAbilitySlot;
+
+        // Frame number when a controller combo (RB+X/Y) was consumed.
+        // Used by TakeInput patch to block game input for that frame only.
+        internal static int ComboConsumedFrame = -1;
+
+        /// <summary>Currently selected ability slot (0-based among unlocked active abilities).</summary>
+        public static int SelectedAbilitySlot => _selectedAbilitySlot;
+
         private void Awake()
         {
             Instance = this;
@@ -27,42 +37,99 @@ namespace StartingClassMod
         {
             if (Player.m_localPlayer == null) return;
 
-            // Don't toggle while typing in chat, console, or other text fields
+            // Don't process while typing in chat, console, or other text fields
             if (Console.IsVisible() || Chat.instance?.HasFocus() == true)
                 return;
             if (TextInput.IsVisible())
                 return;
 
-            // Toggle class UI with Z key or RB+X on controller
-            bool keyboardToggle = Input.GetKeyDown(KeyCode.Z);
+            bool shiftHeld = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+
+            // Shift+Z — Toggle class UI (or RB+X on controller)
+            bool keyboardToggle = shiftHeld && Input.GetKeyDown(KeyCode.Z);
             bool controllerToggle = ZInput.GetButton("JoyTabRight") && ZInput.GetButtonDown("JoyButtonX");
 
             if (keyboardToggle || controllerToggle)
             {
+                if (controllerToggle) ComboConsumedFrame = Time.frameCount;
                 if (IsClassMenuOpen)
                     HideClassSelection();
                 else
                     ShowClassSelection(true);
             }
 
-            // V / Shift+V — Marked by Fate (Assassin ability)
-            if (Input.GetKeyDown(KeyCode.V) && !IsClassMenuOpen)
+            // ALT or RB+B on controller — Cycle selected ability slot
+            bool keyboardCycle = Input.GetKeyDown(KeyCode.LeftAlt);
+            bool controllerCycle = ZInput.GetButton("JoyTabRight") && ZInput.GetButtonDown("JoyButtonB");
+
+            if ((keyboardCycle || controllerCycle) && !IsClassMenuOpen)
             {
-                if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
-                    MarkedByFate.TryUnmark(Player.m_localPlayer);
-                else
-                    MarkedByFate.TryActivate(Player.m_localPlayer);
+                if (controllerCycle) ComboConsumedFrame = Time.frameCount;
+                string cls = ClassPersistence.GetSelectedClassName(Player.m_localPlayer);
+                if (!string.IsNullOrEmpty(cls))
+                    CycleAbilitySlot(Player.m_localPlayer, cls);
             }
 
-            // G — Blade Dance (Assassin active ability)
-            if (Input.GetKeyDown(KeyCode.G) && !IsClassMenuOpen)
+            // Z (no shift) or RB+Y on controller — Activate selected ability
+            bool keyboardAbility = Input.GetKeyDown(KeyCode.Z) && !shiftHeld;
+            bool controllerAbility = ZInput.GetButton("JoyTabRight") && ZInput.GetButtonDown("JoyButtonY");
+
+            if ((keyboardAbility || controllerAbility) && !IsClassMenuOpen)
             {
-                BladeDance.TryActivate(Player.m_localPlayer);
+                if (controllerAbility) ComboConsumedFrame = Time.frameCount;
+                string cls = ClassPersistence.GetSelectedClassName(Player.m_localPlayer);
+                if (!string.IsNullOrEmpty(cls))
+                    ActivateAbilityAtSlot(Player.m_localPlayer, cls);
             }
 
             // Update tracked enemy marks and ability HUD each frame
             MarkedByFate.UpdateMarks();
             AbilityHud.UpdateHud(Player.m_localPlayer);
+        }
+
+        private static void CycleAbilitySlot(Player player, string className)
+        {
+            int count = CountUnlockedActiveAbilities(player, className);
+            if (count <= 1) return;
+            _selectedAbilitySlot = (_selectedAbilitySlot + 1) % count;
+        }
+
+        private static int CountUnlockedActiveAbilities(Player player, string className)
+        {
+            switch (className)
+            {
+                case "Assassin":
+                    int c = 0;
+                    if (AbilityManager.IsAbilityUnlocked(player, "Assassin", 1)) c++;
+                    if (AbilityManager.IsAbilityUnlocked(player, "Assassin", 5)) c++;
+                    return c;
+                default:
+                    return 0;
+            }
+        }
+
+        private static void ActivateAbilityAtSlot(Player player, string className)
+        {
+            // Clamp slot to valid range
+            int count = CountUnlockedActiveAbilities(player, className);
+            if (count == 0) return;
+            if (_selectedAbilitySlot >= count) _selectedAbilitySlot = 0;
+
+            switch (className)
+            {
+                case "Assassin":
+                    int current = 0;
+                    if (AbilityManager.IsAbilityUnlocked(player, "Assassin", 1))
+                    {
+                        if (current == _selectedAbilitySlot) { MarkedByFate.TryActivate(player); return; }
+                        current++;
+                    }
+                    if (AbilityManager.IsAbilityUnlocked(player, "Assassin", 5))
+                    {
+                        if (current == _selectedAbilitySlot) { BladeDance.TryActivate(player); return; }
+                    }
+                    break;
+            }
         }
 
         private void OnDestroy()

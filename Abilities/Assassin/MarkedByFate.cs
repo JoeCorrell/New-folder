@@ -4,11 +4,10 @@ using UnityEngine;
 namespace StartingClassMod
 {
     /// <summary>
-    /// Assassin ultimate ability: Mark enemies your crosshair is aimed at.
+    /// Assassin active ability: Mark enemies your crosshair is aimed at.
     /// Up to 3 marks at once (charge-based, no cooldown).
     /// Marked enemies glow red and appear on the minimap.
-    /// Marks persist until the target dies or you manually unmark with Shift+V.
-    /// Unmarking gives back 1 charge.
+    /// Z key toggles mark/unmark on aimed target. ALT to switch abilities.
     /// </summary>
     public static class MarkedByFate
     {
@@ -33,7 +32,8 @@ namespace StartingClassMod
         /// <summary>Number of enemies currently marked.</summary>
         public static int GetActiveMarkCount() => _activeMarks.Count;
 
-        /// <summary>Try to mark the enemy under the crosshair.</summary>
+        /// <summary>Toggle mark on the enemy under the crosshair (Z key).
+        /// If the target is already marked, unmarks it. Otherwise marks it.</summary>
         public static void TryActivate(Player player)
         {
             if (player == null) return;
@@ -41,10 +41,6 @@ namespace StartingClassMod
             string className = ClassPersistence.GetSelectedClassName(player);
             if (className != "Assassin") return;
             if (!AbilityManager.IsAbilityUnlocked(player, "Assassin", 1)) return;
-
-            // Check charges
-            if (_activeMarks.Count >= MaxCharges)
-                return;
 
             // Get the creature the player is looking at
             Character target = GetAimedCharacter(player);
@@ -57,8 +53,24 @@ namespace StartingClassMod
             if (dist > MarkRange)
                 return;
 
-            // Check if this enemy is already marked
+            // If already marked, unmark it (toggle)
             if (IsMarked(target))
+            {
+                for (int i = _activeMarks.Count - 1; i >= 0; i--)
+                {
+                    if (_activeMarks[i].Target == target)
+                    {
+                        RemoveGlow(_activeMarks[i].Target);
+                        RemoveMark(i);
+                        PlayMarkSfx(player);
+                        return;
+                    }
+                }
+                return;
+            }
+
+            // Check charges
+            if (_activeMarks.Count >= MaxCharges)
                 return;
 
             var pin = Minimap.instance?.AddPin(
@@ -79,27 +91,6 @@ namespace StartingClassMod
 
                 ApplyGlow(target);
                 PlayMarkSfx(player);
-            }
-        }
-
-        /// <summary>Shift+V: unmark the enemy the player is looking at.</summary>
-        public static void TryUnmark(Player player)
-        {
-            if (player == null) return;
-            if (_activeMarks.Count == 0) return;
-
-            Character target = GetAimedCharacter(player);
-            if (target == null) return;
-
-            for (int i = _activeMarks.Count - 1; i >= 0; i--)
-            {
-                if (_activeMarks[i].Target == target)
-                {
-                    RemoveGlow(_activeMarks[i].Target);
-                    RemoveMark(i);
-                    PlayMarkSfx(player);
-                    return;
-                }
             }
         }
 

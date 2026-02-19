@@ -1700,7 +1700,7 @@ namespace StartingClassMod
                 return;
             }
 
-            string[] tierLabels = { "Passive", "Tier I", "Tier II", "Ultimate" };
+            string[] tierLabels = { "Passive", "Tier I", "Tier II", "Tier III", "Tier IV", "Ultimate" };
 
             // Track next locked ability index for the unlock button
             int nextLockedIndex = -1;
@@ -1709,19 +1709,25 @@ namespace StartingClassMod
             {
                 var ability = cls.Abilities[i];
                 string tierLabel = i < tierLabels.Length ? tierLabels[i] : $"Tier {i}";
-                bool unlocked = ability.IsPassive || (isPlayerClass && AbilityManager.IsAbilityUnlocked(player, cls.Name, i));
+                bool unlocked = isPlayerClass && AbilityManager.IsAbilityUnlocked(player, cls.Name, i);
+
+                // Determine type tag and colors based on passive vs ability
+                string typeTag = ability.IsPassive ? "Passive" : "Ability";
+                // Passives: blue/teal, Abilities: orange/gold
+                string typeColor = ability.IsPassive ? "#66B3E5" : "#D4A24E";
 
                 if (unlocked)
                 {
-                    // ── Unlocked ability: green ──
-                    sb.AppendLine("<color=#8AE58A>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
-                    sb.AppendLine($"<size=22><color=#8AE58A>\u2605 {ability.Name}</color></size>");
-                    sb.AppendLine($"<size=14><color=#8AE58A>{tierLabel} \u2014 Unlocked</color></size>");
+                    // ── Unlocked ──
+                    string accentColor = ability.IsPassive ? "#8AE58A" : "#E5C56A";
+                    sb.AppendLine($"<color={accentColor}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
+                    sb.AppendLine($"<size=22><color={accentColor}>\u2605 {ability.Name}</color></size>");
+                    sb.AppendLine($"<size=14><color={typeColor}>{typeTag}</color> <color={accentColor}>\u2014 Unlocked</color></size>");
                     sb.AppendLine();
                     sb.AppendLine($"<size=16>{ability.Description}</size>");
 
-                    // Skill bonuses on passive
-                    if (ability.IsPassive && cls.SkillBonuses != null && cls.SkillBonuses.Count > 0)
+                    // Skill bonuses only on the first passive (index 0)
+                    if (i == 0 && cls.SkillBonuses != null && cls.SkillBonuses.Count > 0)
                     {
                         sb.AppendLine();
                         sb.Append("<size=15><color=#8AE58A>");
@@ -1733,23 +1739,22 @@ namespace StartingClassMod
                         }
                         sb.AppendLine("</color></size>");
                     }
-                    sb.AppendLine("<color=#8AE58A>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
+                    sb.AppendLine($"<color={accentColor}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
                 }
                 else
                 {
-                    // ── Locked ability ──
+                    // ── Locked ──
                     if (nextLockedIndex < 0) nextLockedIndex = i;
 
-                    bool isUltimate = ability.PointCost >= 50;
+                    bool isUltimate = i == cls.Abilities.Count - 1 && !ability.IsPassive;
                     string borderColor = isUltimate ? "#8B4513" : "#555555";
                     string nameColor = isUltimate ? "#D4A24E" : "#BBBBBB";
-                    string tierColor = isUltimate ? "#8B4513" : "#777777";
                     string descColor = isUltimate ? "#999999" : "#888888";
                     string icon = isUltimate ? "\u25C6" : "\u25C8";
 
                     sb.AppendLine($"<color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
                     sb.AppendLine($"<size=22><color={nameColor}>{icon} {ability.Name}</color></size>");
-                    sb.AppendLine($"<size=14><color={tierColor}>{tierLabel} \u2022 {ability.PointCost} pts</color></size>");
+                    sb.AppendLine($"<size=14><color={typeColor}>{typeTag}</color> <color=#777777>\u2022 {tierLabel} \u2022 {ability.PointCost} pts</color></size>");
                     sb.AppendLine();
                     sb.AppendLine($"<size=16><color={descColor}>{ability.Description}</color></size>");
                     sb.AppendLine();
@@ -1812,7 +1817,6 @@ namespace StartingClassMod
             // Find the next locked ability (sequential unlock order)
             for (int i = 0; i < cls.Abilities.Count; i++)
             {
-                if (cls.Abilities[i].IsPassive) continue;
                 if (AbilityManager.IsAbilityUnlocked(player, cls.Name, i)) continue;
 
                 // This is the next ability to unlock
