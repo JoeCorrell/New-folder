@@ -38,7 +38,6 @@ namespace StartingClassMod
         private ScrollRect _listScrollRect;
         private ScrollRectEnsureVisible _ensureVisible;
         private ScrollRect _descriptionScrollRect;
-        private Scrollbar _descriptionScrollbar;
         private int _descScrollResetFrames;
 
         // ── Tab buttons ──
@@ -741,12 +740,12 @@ namespace StartingClassMod
                 var handleImg = handleGO.GetComponent<Image>();
                 handleImg.color = new Color(0.83f, 0.64f, 0.31f, 0.9f); // gold to match UI
 
-                _descriptionScrollbar = scrollbarGO.AddComponent<Scrollbar>();
-                _descriptionScrollbar.handleRect = handleRT;
-                _descriptionScrollbar.direction = Scrollbar.Direction.BottomToTop;
-                _descriptionScrollbar.targetGraphic = handleImg;
+                var descScrollbar = scrollbarGO.AddComponent<Scrollbar>();
+                descScrollbar.handleRect = handleRT;
+                descScrollbar.direction = Scrollbar.Direction.BottomToTop;
+                descScrollbar.targetGraphic = handleImg;
 
-                _descriptionScrollRect.verticalScrollbar = _descriptionScrollbar;
+                _descriptionScrollRect.verticalScrollbar = descScrollbar;
                 _descriptionScrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
             }
 
@@ -786,9 +785,9 @@ namespace StartingClassMod
                 float prevTop = tabPreviewPanel.anchorMax.y * ph + tabPreviewPanel.offsetMax.y;
                 float uniformTabY = Mathf.Max(listTop, Mathf.Max(descTop, prevTop)) + tabTopPad;
 
-                _tabClasses = CreateTabButton("Classes", 0, tabListPanel, pw, ph, craftW, craftH, uniformTabY);
-                _tabSkills  = CreateTabButton("Skills",  1, tabDescPanel, pw, ph, craftW, craftH, uniformTabY);
-                _tabAbout   = CreateTabButton("About",   2, tabPreviewPanel, pw, ph, craftW, craftH, uniformTabY);
+                _tabClasses = CreateTabButton("Classes", 0, tabListPanel, pw, craftW, craftH, uniformTabY);
+                _tabSkills  = CreateTabButton("Skills",  1, tabDescPanel, pw, craftW, craftH, uniformTabY);
+                _tabAbout   = CreateTabButton("About",   2, tabPreviewPanel, pw, craftW, craftH, uniformTabY);
 
                 _activeTab = 0;
                 RefreshTabHighlights();
@@ -1419,8 +1418,6 @@ namespace StartingClassMod
         }
 
         // ══════════════════════════════════════════
-        //  REPURPOSE STAR BOX AS 5TH REQUIREMENT SLOT
-        // ══════════════════════════════════════════
         //  CLASS LIST POPULATION
         // ══════════════════════════════════════════
 
@@ -1944,18 +1941,18 @@ namespace StartingClassMod
                 "<size=20><color=#66B3E5>Skill Bonuses</color></size>\n" +
                 "Each class starts with <color=#8AE58A>bonus levels</color> in one or more skills. " +
                 "For example, an Archer begins with bonus levels in Bows, while a " +
-                "Warrior starts with bonus levels in Swords and Blocking. " +
+                "Miner starts with bonus levels in Pickaxes and Blocking. " +
                 "These bonuses give you a head start — skills continue to level up " +
                 "naturally through use, just like normal.\n\n" +
 
                 "<size=20><color=#66B3E5>Passive Abilities</color></size>\n" +
                 "Every class has a <color=#D4A24E>passive ability</color> that is always active. " +
                 "These provide unique advantages: the Archer deals bonus damage at range, " +
-                "the Brute staggers enemies harder, and the Explorer moves faster. " +
+                "the Hunter marks wounded prey, and the Explorer moves faster. " +
                 "Passives require no activation and work automatically.\n\n" +
 
                 "<size=20><color=#66B3E5>Locked Abilities</color></size>\n" +
-                "Each class also has a <color=#999999>locked ability</color> shown in grey. " +
+                "Each class also has <color=#999999>locked abilities</color> shown in grey. " +
                 "These represent advanced powers that unlock as you master your class skills. " +
                 "Keep training your core skills to eventually unlock them.\n\n" +
 
@@ -2026,7 +2023,7 @@ namespace StartingClassMod
             return string.Join("/", parts);
         }
 
-        private GameObject CreateTabButton(string label, int tabIndex, RectTransform panel, float parentWidth, float parentHeight, float craftBtnWidth, float craftBtnHeight, float tabY)
+        private GameObject CreateTabButton(string label, int tabIndex, RectTransform panel, float parentWidth, float craftBtnWidth, float craftBtnHeight, float tabY)
         {
             var tabGO = Instantiate(_craftButton.gameObject, _clonedPanel.transform);
             tabGO.name = "Tab_" + label;
