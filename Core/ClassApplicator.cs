@@ -49,6 +49,12 @@ namespace StartingClassMod
                 ClassPersistence.SaveSelectedClass(player, startingClass.Name);
             }
 
+            // Initialize ability effects (passive SE, any previously unlocked SEs)
+            AbilityManager.InitializeAbilities(player, startingClass.Name);
+
+            // Play skill level-up sound effect
+            player.m_skillLevelupEffects.Create(player.GetHeadPoint(), player.transform.rotation, player.transform);
+
             // Show a message to the player
             player.Message(MessageHud.MessageType.Center, $"You begin your journey as a {startingClass.Name}!");
             StartingClassPlugin.Log($"Applied class '{startingClass.Name}'.");

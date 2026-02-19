@@ -70,12 +70,25 @@ namespace StartingClassMod
 
         /// <summary>
         /// Removes all class data (for testing purposes only, triggered by command).
+        /// Clears class selection, ability unlocks, and skill points.
         /// </summary>
         public static void ClearAllData(Player player)
         {
             if (player == null) return;
             player.m_customData.Remove(ClassDataKey);
             player.m_customData.Remove(ClassPendingKey);
+
+            // Clear ability unlock keys, skill points, and cooldowns
+            var keysToRemove = new System.Collections.Generic.List<string>();
+            foreach (var key in player.m_customData.Keys)
+            {
+                if (key.StartsWith("StartingClassMod_Ability_") ||
+                    key.StartsWith("StartingClassMod_BladeDance_") ||
+                    key == "StartingClassMod_SkillPoints")
+                    keysToRemove.Add(key);
+            }
+            foreach (var key in keysToRemove)
+                player.m_customData.Remove(key);
         }
     }
 }

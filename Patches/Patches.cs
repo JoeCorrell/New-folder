@@ -1,3 +1,4 @@
+using System.Reflection;
 using HarmonyLib;
 
 namespace StartingClassMod
@@ -28,7 +29,16 @@ namespace StartingClassMod
                 // Only show for characters that haven't selected a class yet
                 // (or whose selection was interrupted by a crash)
                 if (!ClassPersistence.HasSelectedClass(__instance) || ClassPersistence.IsPending(__instance))
+                {
                     StartingClassPlugin.Instance.ShowClassSelection(false);
+                }
+                else
+                {
+                    // Re-apply ability status effects on login
+                    string className = ClassPersistence.GetSelectedClassName(__instance);
+                    if (!string.IsNullOrEmpty(className))
+                        AbilityManager.InitializeAbilities(__instance, className);
+                }
             }
         }
 
@@ -58,6 +68,18 @@ namespace StartingClassMod
                     return false;
                 }
 
+                if (trimmed.StartsWith("/SetSkillPoints", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    HandleSetSkillPoints(__instance, trimmed);
+                    return false;
+                }
+
+                if (trimmed.Equals("/ClassReset", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    HandleClassReset(__instance);
+                    return false;
+                }
+
                 return true; // Let other commands through
             }
 
@@ -75,6 +97,16 @@ namespace StartingClassMod
 
                 if (resetData)
                 {
+                    // Remove mod-applied status effects before clearing data
+                    var seman = player.GetSEMan();
+                    if (seman != null)
+                    {
+                        seman.RemoveStatusEffect("SE_ShadowStep".GetStableHashCode());
+                        seman.RemoveStatusEffect("SE_NaturesShroud".GetStableHashCode());
+                        seman.RemoveStatusEffect("SE_GhostStride".GetStableHashCode());
+                    }
+                    MarkedByFate.ClearAllMarks();
+                    BladeDance.Reset();
                     ClassPersistence.ClearAllData(player);
                     terminal.AddString("StartingClass: Cleared class data. Opening selection menu...");
                 }
@@ -93,6 +125,63 @@ namespace StartingClassMod
                 }
 
                 StartingClassPlugin.Instance.ShowClassSelection(true);
+            }
+
+            private static void HandleSetSkillPoints(Terminal terminal, string input)
+            {
+                terminal.m_input.text = "";
+
+                var player = Player.m_localPlayer;
+                if (player == null)
+                {
+                    terminal.AddString("StartingClass: No local player found. Must be in-game.");
+                    return;
+                }
+
+                // Parse amount from "/SetSkillPoints 100"
+                string[] parts = input.Split(new[] { ' ' }, System.StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 2 || !int.TryParse(parts[1], out int amount) || amount < 0)
+                {
+                    terminal.AddString("Usage: /SetSkillPoints <amount>  (e.g. /SetSkillPoints 100)");
+                    return;
+                }
+
+                SkillPointSystem.SetPoints(player, amount);
+                terminal.AddString($"StartingClass: Skill points set to {amount}.");
+            }
+
+            private static void HandleClassReset(Terminal terminal)
+            {
+                terminal.m_input.text = "";
+
+                var player = Player.m_localPlayer;
+                if (player == null)
+                {
+                    terminal.AddString("StartingClass: No local player found. Must be in-game.");
+                    return;
+                }
+
+                string className = ClassPersistence.GetSelectedClassName(player);
+                if (string.IsNullOrEmpty(className))
+                {
+                    terminal.AddString("StartingClass: No class selected. Nothing to reset.");
+                    return;
+                }
+
+                int refunded = AbilityManager.ResetAbilities(player, className);
+
+                // Remove active SEs
+                var seman = player.GetSEMan();
+                if (seman != null)
+                {
+                    seman.RemoveStatusEffect("SE_ShadowStep".GetStableHashCode());
+                    seman.RemoveStatusEffect("SE_NaturesShroud".GetStableHashCode());
+                    seman.RemoveStatusEffect("SE_GhostStride".GetStableHashCode());
+                }
+                MarkedByFate.ClearAllMarks();
+                BladeDance.Reset();
+
+                terminal.AddString($"StartingClass: Reset all abilities for {className}. Refunded {refunded} skill points.");
             }
         }
 
@@ -154,6 +243,59 @@ namespace StartingClassMod
             static void Postfix()
             {
                 StartingClassPlugin.Instance?.HideClassSelection();
+            }
+        }
+
+        /// <summary>
+        /// Award skill points when a creature dies.
+        /// Character.OnDeath is protected virtual — use string-based patch.
+        /// </summary>
+        [HarmonyPatch(typeof(Character), "OnDeath")]
+        public static class Character_OnDeath_Patch
+        {
+            private static readonly FieldInfo LastHitField =
+                AccessTools.Field(typeof(Character), "m_lastHit");
+
+            static void Postfix(Character __instance)
+            {
+                if (__instance == null || __instance.IsPlayer()) return;
+                if (LastHitField == null) return;
+
+                var lastHit = LastHitField.GetValue(__instance) as HitData;
+                if (lastHit == null) return;
+
+                var attacker = lastHit.GetAttacker();
+                if (attacker == null || attacker != Player.m_localPlayer) return;
+
+                SkillPointSystem.OnEnemyKilled(__instance, Player.m_localPlayer);
+            }
+        }
+
+        /// <summary>
+        /// Award bonus skill points when a class-relevant skill levels up.
+        /// Hooks Player.OnSkillLevelup which is called from Skills.RaiseSkill on level change.
+        /// </summary>
+        [HarmonyPatch(typeof(Player), nameof(Player.OnSkillLevelup))]
+        public static class Player_OnSkillLevelup_Patch
+        {
+            static void Postfix(Player __instance, Skills.SkillType skill)
+            {
+                if (__instance != Player.m_localPlayer) return;
+                SkillPointSystem.OnSkillLevelup(__instance, skill);
+            }
+        }
+
+        /// <summary>
+        /// Clean up marked enemies and ability HUD when logging out.
+        /// </summary>
+        [HarmonyPatch(typeof(Game), nameof(Game.Logout))]
+        public static class Game_Logout_MarkedByFate_Patch
+        {
+            static void Prefix()
+            {
+                MarkedByFate.ClearAllMarks();
+                BladeDance.Reset();
+                AbilityHud.Destroy();
             }
         }
     }

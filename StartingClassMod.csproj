@@ -81,6 +81,19 @@
       <HintPath>$(ManagedDir)\UnityEngine.AnimationModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="Splatform">
+      <HintPath>$(ManagedDir)\Splatform.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AudioModule">
+      <HintPath>$(ManagedDir)\UnityEngine.AudioModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Embed texture resources into the DLL -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\Textures\Abilities\*.png" />
   </ItemGroup>
 
   <!-- Auto-deploy to BepInEx plugins folder after every build -->

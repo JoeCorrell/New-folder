@@ -44,6 +44,25 @@ namespace StartingClassMod
                 else
                     ShowClassSelection(true);
             }
+
+            // V / Shift+V — Marked by Fate (Assassin ability)
+            if (Input.GetKeyDown(KeyCode.V) && !IsClassMenuOpen)
+            {
+                if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+                    MarkedByFate.TryUnmark(Player.m_localPlayer);
+                else
+                    MarkedByFate.TryActivate(Player.m_localPlayer);
+            }
+
+            // G — Blade Dance (Assassin active ability)
+            if (Input.GetKeyDown(KeyCode.G) && !IsClassMenuOpen)
+            {
+                BladeDance.TryActivate(Player.m_localPlayer);
+            }
+
+            // Update tracked enemy marks and ability HUD each frame
+            MarkedByFate.UpdateMarks();
+            AbilityHud.UpdateHud(Player.m_localPlayer);
         }
 
         private void OnDestroy()

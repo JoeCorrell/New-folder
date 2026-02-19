@@ -759,15 +759,16 @@ namespace StartingClassMod
             var tabDescPanel = _clonedPanel.transform.Find("Decription") as RectTransform;
             var tabPreviewPanel = _clonedPanel.transform.Find("PreviewContainer") as RectTransform;
 
-            // Push the three content panels down by tabHeight + extra nudge
-            float panelNudge = 5f;
-            float totalShiftDown = tabHeight + panelNudge;
-            if (tabListPanel != null)
-                tabListPanel.offsetMax = new Vector2(tabListPanel.offsetMax.x, tabListPanel.offsetMax.y - totalShiftDown);
-            if (tabDescPanel != null)
-                tabDescPanel.offsetMax = new Vector2(tabDescPanel.offsetMax.x, tabDescPanel.offsetMax.y - totalShiftDown);
-            if (tabPreviewPanel != null)
-                tabPreviewPanel.offsetMax = new Vector2(tabPreviewPanel.offsetMax.x, tabPreviewPanel.offsetMax.y - totalShiftDown);
+            // Shift panels up within the UI background so they don't sit too low,
+            // then nudge top edge down slightly to leave room for tab buttons.
+            float liftUp = 15f;
+            float topNudge = tabHeight; // small top inset for tabs
+            foreach (var p in new[] { tabListPanel, tabDescPanel, tabPreviewPanel })
+            {
+                if (p == null) continue;
+                p.offsetMin = new Vector2(p.offsetMin.x, p.offsetMin.y + liftUp);
+                p.offsetMax = new Vector2(p.offsetMax.x, p.offsetMax.y + liftUp - topNudge);
+            }
 
             // Create tab buttons above each panel, cloning the craft button's visual style
             if (_craftButton != null && tabListPanel != null && tabDescPanel != null && tabPreviewPanel != null)
@@ -775,7 +776,7 @@ namespace StartingClassMod
                 var craftRT = _craftButton.GetComponent<RectTransform>();
                 float craftW = craftRT != null ? craftRT.rect.width : 140f;
                 float craftH = craftRT != null ? craftRT.rect.height : 30f;
-                float tabTopPad = 11f;
+                float tabTopPad = 6f;
                 float pw = panelRT.sizeDelta.x;
                 float ph = panelRT.sizeDelta.y;
 
@@ -1080,6 +1081,7 @@ namespace StartingClassMod
                         if (_unlockButton != null)
                         {
                             _unlockButton.onClick.RemoveAllListeners();
+                            _unlockButton.onClick.AddListener(OnUnlockButtonClicked);
                             _unlockButton.navigation = new Navigation { mode = Navigation.Mode.None };
                             _unlockButton.interactable = false;
                         }
@@ -1573,7 +1575,7 @@ namespace StartingClassMod
                     selTr.gameObject.SetActive(false);
                     var selImg = selTr.GetComponent<Image>();
                     if (selImg != null)
-                        selImg.color = new Color(0.6f, 0.6f, 0.6f, 0.4f);
+                        selImg.color = new Color(0.83f, 0.64f, 0.31f, 0.5f);
                 }
 
                 _classElements.Add(element);
@@ -1667,19 +1669,28 @@ namespace StartingClassMod
             }
 
             var cls = _classes[_selectedIndex];
+            var player = Player.m_localPlayer;
+            int currentPoints = player != null ? SkillPointSystem.GetPoints(player) : 0;
+            string playerClass = player != null ? ClassPersistence.GetSelectedClassName(player) : null;
+            bool isPlayerClass = playerClass == cls.Name;
+
             var sb = new System.Text.StringBuilder();
 
-            // Calculate total points needed to unlock everything
-            int totalCost = 0;
+            // Calculate remaining cost (only locked abilities)
+            int remainingCost = 0;
             if (cls.Abilities != null)
-                foreach (var a in cls.Abilities)
-                    totalCost += a.PointCost;
+                for (int ai = 0; ai < cls.Abilities.Count; ai++)
+                    if (!cls.Abilities[ai].IsPassive && isPlayerClass && !AbilityManager.IsAbilityUnlocked(player, cls.Name, ai))
+                        remainingCost += cls.Abilities[ai].PointCost;
 
             // Header
             sb.AppendLine($"<align=center><size=26><color=#D4A24E>{cls.Name}</color></size></align>");
             sb.AppendLine($"<align=center><size=16><color=#AAAAAA>Skill Tree</color></size></align>");
             sb.AppendLine();
-            sb.AppendLine($"<align=center><size=17>Available: <color=#8AE58A>0</color>  \u2022  Total Needed: <color=#D4A24E>{totalCost}</color></size></align>");
+            if (isPlayerClass)
+                sb.AppendLine($"<align=center><size=17>Available: <color=#8AE58A>{currentPoints}</color>  \u2022  Remaining: <color=#D4A24E>{remainingCost}</color></size></align>");
+            else
+                sb.AppendLine($"<align=center><size=17><color=#999999>Select this class to unlock abilities</color></size></align>");
             sb.AppendLine();
 
             if (cls.Abilities == null || cls.Abilities.Count == 0)
@@ -1691,22 +1702,26 @@ namespace StartingClassMod
 
             string[] tierLabels = { "Passive", "Tier I", "Tier II", "Ultimate" };
 
+            // Track next locked ability index for the unlock button
+            int nextLockedIndex = -1;
+
             for (int i = 0; i < cls.Abilities.Count; i++)
             {
                 var ability = cls.Abilities[i];
                 string tierLabel = i < tierLabels.Length ? tierLabels[i] : $"Tier {i}";
+                bool unlocked = ability.IsPassive || (isPlayerClass && AbilityManager.IsAbilityUnlocked(player, cls.Name, i));
 
-                if (ability.IsPassive)
+                if (unlocked)
                 {
-                    // ── Passive: unlocked, green ──
+                    // ── Unlocked ability: green ──
                     sb.AppendLine("<color=#8AE58A>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
                     sb.AppendLine($"<size=22><color=#8AE58A>\u2605 {ability.Name}</color></size>");
                     sb.AppendLine($"<size=14><color=#8AE58A>{tierLabel} \u2014 Unlocked</color></size>");
                     sb.AppendLine();
                     sb.AppendLine($"<size=16>{ability.Description}</size>");
 
-                    // Skill bonuses
-                    if (cls.SkillBonuses != null && cls.SkillBonuses.Count > 0)
+                    // Skill bonuses on passive
+                    if (ability.IsPassive && cls.SkillBonuses != null && cls.SkillBonuses.Count > 0)
                     {
                         sb.AppendLine();
                         sb.Append("<size=15><color=#8AE58A>");
@@ -1723,6 +1738,8 @@ namespace StartingClassMod
                 else
                 {
                     // ── Locked ability ──
+                    if (nextLockedIndex < 0) nextLockedIndex = i;
+
                     bool isUltimate = ability.PointCost >= 50;
                     string borderColor = isUltimate ? "#8B4513" : "#555555";
                     string nameColor = isUltimate ? "#D4A24E" : "#BBBBBB";
@@ -1736,15 +1753,17 @@ namespace StartingClassMod
                     sb.AppendLine();
                     sb.AppendLine($"<size=16><color={descColor}>{ability.Description}</color></size>");
                     sb.AppendLine();
-                    sb.AppendLine($"<size=15><color=#D4A24E>\u25C6 {ability.PointCost} Skill Points</color>  <color=#666666>(You have: 0)</color></size>");
+                    string haveColor = currentPoints >= ability.PointCost ? "#8AE58A" : "#666666";
+                    sb.AppendLine($"<size=15><color=#D4A24E>\u25C6 {ability.PointCost} Skill Points</color>  <color={haveColor}>(You have: {currentPoints})</color></size>");
                     sb.AppendLine($"<color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
                 }
 
                 // Connector arrow between abilities
                 if (i < cls.Abilities.Count - 1)
                 {
-                    sb.AppendLine("<align=center><size=20><color=#666666>\u2502</color></size></align>");
-                    sb.AppendLine("<align=center><size=20><color=#666666>\u25BC</color></size></align>");
+                    string arrowColor = unlocked ? "#8AE58A" : "#666666";
+                    sb.AppendLine($"<align=center><size=20><color={arrowColor}>\u2502</color></size></align>");
+                    sb.AppendLine($"<align=center><size=20><color={arrowColor}>\u25BC</color></size></align>");
                 }
             }
 
@@ -1752,19 +1771,22 @@ namespace StartingClassMod
             _skillsText.ForceMeshUpdate();
             LayoutRebuilder.ForceRebuildLayoutImmediate(_skillsText.rectTransform);
 
-            // Update unlock button — find the next locked ability
+            // Update unlock button
             if (_unlockButton != null)
             {
-                ClassAbility nextLocked = null;
-                if (cls.Abilities != null)
-                    foreach (var a in cls.Abilities)
-                        if (!a.IsPassive) { nextLocked = a; break; }
-
-                if (nextLocked != null)
+                if (!isPlayerClass)
                 {
-                    _unlockButton.interactable = false; // placeholder — no points yet
+                    _unlockButton.interactable = false;
                     if (_unlockButtonLabel != null)
-                        _unlockButtonLabel.text = $"Unlock {nextLocked.Name} ({nextLocked.PointCost} pts)";
+                        _unlockButtonLabel.text = "Not Your Class";
+                }
+                else if (nextLockedIndex >= 0)
+                {
+                    var nextAbility = cls.Abilities[nextLockedIndex];
+                    bool canAfford = currentPoints >= nextAbility.PointCost;
+                    _unlockButton.interactable = canAfford;
+                    if (_unlockButtonLabel != null)
+                        _unlockButtonLabel.text = $"Unlock {nextAbility.Name} ({nextAbility.PointCost} pts)";
                 }
                 else
                 {
@@ -1772,6 +1794,40 @@ namespace StartingClassMod
                     if (_unlockButtonLabel != null)
                         _unlockButtonLabel.text = "All Skills Unlocked";
                 }
+            }
+        }
+
+        private void OnUnlockButtonClicked()
+        {
+            if (_selectedIndex < 0 || _selectedIndex >= _classes.Count) return;
+            var cls = _classes[_selectedIndex];
+            var player = Player.m_localPlayer;
+            if (player == null) return;
+
+            string playerClass = ClassPersistence.GetSelectedClassName(player);
+            if (playerClass != cls.Name) return;
+
+            if (cls.Abilities == null) return;
+
+            // Find the next locked ability (sequential unlock order)
+            for (int i = 0; i < cls.Abilities.Count; i++)
+            {
+                if (cls.Abilities[i].IsPassive) continue;
+                if (AbilityManager.IsAbilityUnlocked(player, cls.Name, i)) continue;
+
+                // This is the next ability to unlock
+                var ability = cls.Abilities[i];
+                if (AbilityManager.UnlockAbility(player, cls.Name, i, ability.PointCost))
+                {
+                    player.m_skillLevelupEffects.Create(player.GetHeadPoint(), player.transform.rotation, player.transform);
+                    player.Message(MessageHud.MessageType.Center, $"Unlocked: {ability.Name}!");
+                    RefreshSkillsPanel();
+                }
+                else
+                {
+                    player.Message(MessageHud.MessageType.Center, "Not enough Skill Points!");
+                }
+                return;
             }
         }
 
