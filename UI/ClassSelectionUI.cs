@@ -51,7 +51,7 @@ namespace StartingClassMod
         private GameObject _armorPanel;
         private TMP_Text _armorText;
         private ScrollRect _armorScrollRect;
-        private int _armorSelectedSlot; // 0=Chest, 1=Legs, 2=Helmet, 3=Shoulder
+        private int _armorSelectedSlot; // index into ArmorUpgradeSystem.GetAllSets()
 
         // ── Skills panel ──
         private GameObject _skillsPanel;
@@ -286,9 +286,9 @@ namespace StartingClassMod
                 }
                 else if (_activeTab == 2)
                 {
-                    // Armor tab: navigate armor slots
-                    string[] slots = ArmorUpgradeSystem.GetSlotNames();
-                    _armorSelectedSlot = Mathf.Min(slots.Length - 1, _armorSelectedSlot + 1);
+                    // Armor tab: navigate armor sets
+                    var sets = ArmorUpgradeSystem.GetAllSets();
+                    _armorSelectedSlot = Mathf.Min(sets.Length - 1, _armorSelectedSlot + 1);
                     RefreshArmorPanel();
                 }
                 else
@@ -782,7 +782,7 @@ namespace StartingClassMod
             if (_recipeDescription != null)
             {
                 _recipeDescription.enableAutoSizing = false;
-                _recipeDescription.fontSize = 20f;
+                _recipeDescription.fontSize = 18f;
             }
 
             // Craft button → confirm class selection
@@ -1722,6 +1722,75 @@ namespace StartingClassMod
                 t.gameObject.layer = charLayer;
         }
 
+        private void UpdatePreviewArmorSet(ArmorSetDef set)
+        {
+            if (_previewClone == null) return;
+            var visEquip = _previewClone.GetComponent<VisEquipment>();
+            if (visEquip == null) return;
+
+            // Clear all slots
+            var slotFields = new Dictionary<string, string>
+            {
+                { "m_rightItem", "" }, { "m_leftItem", "" },
+                { "m_chestItem", "" }, { "m_legItem", "" },
+                { "m_helmetItem", "" }, { "m_shoulderItem", "" },
+                { "m_utilityItem", "" }, { "m_leftBackItem", "" },
+                { "m_rightBackItem", "" }
+            };
+
+            if (set != null)
+            {
+                foreach (var prefabName in set.Pieces)
+                {
+                    var prefab = ZNetScene.instance?.GetPrefab(prefabName);
+                    if (prefab == null) continue;
+                    var drop = prefab.GetComponent<ItemDrop>();
+                    if (drop == null || drop.m_itemData == null) continue;
+
+                    switch (drop.m_itemData.m_shared.m_itemType)
+                    {
+                        case ItemDrop.ItemData.ItemType.Chest:
+                            slotFields["m_chestItem"] = prefabName;
+                            break;
+                        case ItemDrop.ItemData.ItemType.Legs:
+                            slotFields["m_legItem"] = prefabName;
+                            break;
+                        case ItemDrop.ItemData.ItemType.Helmet:
+                            slotFields["m_helmetItem"] = prefabName;
+                            break;
+                        case ItemDrop.ItemData.ItemType.Shoulder:
+                            slotFields["m_shoulderItem"] = prefabName;
+                            break;
+                    }
+                }
+            }
+
+            foreach (var kv in slotFields)
+                AccessTools.Field(typeof(VisEquipment), kv.Key)?.SetValue(visEquip, kv.Value);
+
+            // Reset hash fields to force visual update
+            if (_visEquipHashFields == null)
+            {
+                var allFields = AccessTools.GetDeclaredFields(typeof(VisEquipment));
+                var hashList = new List<System.Reflection.FieldInfo>();
+                foreach (var f in allFields)
+                {
+                    if (f.FieldType == typeof(int) && f.Name.StartsWith("m_current") && f.Name.Contains("Hash"))
+                        hashList.Add(f);
+                }
+                _visEquipHashFields = hashList.ToArray();
+            }
+            foreach (var field in _visEquipHashFields)
+                field.SetValue(visEquip, -1);
+
+            AccessTools.Method(typeof(VisEquipment), "UpdateVisuals")?.Invoke(visEquip, null);
+
+            int charLayer = LayerMask.NameToLayer("character");
+            if (charLayer < 0) charLayer = 9;
+            foreach (var t in _previewClone.GetComponentsInChildren<Transform>(true))
+                t.gameObject.layer = charLayer;
+        }
+
         // ══════════════════════════════════════════
         //  CLASS LIST POPULATION
         // ══════════════════════════════════════════
@@ -2047,7 +2116,7 @@ namespace StartingClassMod
                 {
                     // ── Unlocked ──
                     string accentColor = ability.IsPassive ? "#8AE58A" : "#E5C56A";
-                    sb.AppendLine($"<color={accentColor}>━━━━━━━━━━━━━━━━━━━━</color>");
+                    sb.AppendLine($"<align=center><color={accentColor}>━━━━━━━━━━━━━━━━━━━━━━</color></align>");
                     sb.AppendLine($"<size=22><color={accentColor}>\u2605 {ability.Name}</color></size>");
                     sb.AppendLine($"<size=14><color={typeColor}>{typeTag}</color> <color={accentColor}>\u2014 Unlocked</color></size>");
                     sb.AppendLine();
@@ -2066,6 +2135,7 @@ namespace StartingClassMod
                         }
                         sb.AppendLine("</color></size>");
                     }
+                    sb.AppendLine($"<align=center><color={accentColor}>━━━━━━━━━━━━━━━━━━━━━━</color></align>");
                 }
                 else
                 {
@@ -2078,7 +2148,7 @@ namespace StartingClassMod
                     string descColor = isUltimate ? "#999999" : "#888888";
                     string icon = isUltimate ? "\u25C6" : "\u25C8";
 
-                    sb.AppendLine($"<color={borderColor}>━━━━━━━━━━━━━━━━━━━━</color>");
+                    sb.AppendLine($"<align=center><color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━</color></align>");
                     sb.AppendLine($"<size=22><color={nameColor}>{icon} {ability.Name}</color></size>");
                     sb.AppendLine($"<size=14><color={typeColor}>{typeTag}</color> <color=#777777>\u2022 {tierLabel} \u2022 {ability.PointCost} pts</color></size>");
                     sb.AppendLine();
@@ -2086,6 +2156,7 @@ namespace StartingClassMod
                     sb.AppendLine();
                     string haveColor = currentPoints >= ability.PointCost ? "#8AE58A" : "#666666";
                     sb.AppendLine($"<size=15><color=#D4A24E>\u25C6 {ability.PointCost} Skill Points</color>  <color={haveColor}>(You have: {currentPoints})</color></size>");
+                    sb.AppendLine($"<align=center><color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━</color></align>");
                 }
 
                 // Connector arrow between abilities
@@ -2645,67 +2716,203 @@ namespace StartingClassMod
                     _classElements[i].SetActive(false);
                 }
             }
+
+            // Restore content height for class count
+            if (_recipeListRoot != null && _classes.Count > 0)
+            {
+                var templateRT = InventoryGui.instance?.m_recipeElementPrefab?.transform as RectTransform;
+                float templateHeight = 32f;
+                if (templateRT != null)
+                    templateHeight = Mathf.Max(24f, Mathf.Max(templateRT.rect.height, templateRT.sizeDelta.y));
+                float rowHeight = Mathf.Max(templateHeight * 2f, 48f);
+                float spacing = rowHeight + 6f;
+                float contentHeight = (_classes.Count - 1) * spacing + rowHeight;
+                _recipeListRoot.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, contentHeight);
+            }
+
             RefreshHighlights();
+        }
+
+        /// <summary>
+        /// Create additional list elements if we have more armor sets than class entries.
+        /// </summary>
+        private void EnsureArmorListElements(int needed)
+        {
+            if (_classElements.Count >= needed) return;
+
+            var invGui = InventoryGui.instance;
+            if (_recipeListRoot == null || invGui == null || invGui.m_recipeElementPrefab == null) return;
+
+            var descPanel = _clonedPanel.transform.Find("Decription");
+            Image descImg = descPanel != null ? descPanel.GetComponent<Image>() : null;
+
+            var templateRT = invGui.m_recipeElementPrefab.transform as RectTransform;
+            float templateHeight = 32f;
+            if (templateRT != null)
+                templateHeight = Mathf.Max(24f, Mathf.Max(templateRT.rect.height, templateRT.sizeDelta.y));
+
+            float rowHeight = Mathf.Max(templateHeight * 2f, 48f);
+            float gap = 6f;
+            float spacing = rowHeight + gap;
+
+            while (_classElements.Count < needed)
+            {
+                int i = _classElements.Count;
+                int idx = i;
+
+                var element = Instantiate(invGui.m_recipeElementPrefab, _recipeListRoot);
+                element.SetActive(false);
+                element.name = "ArmorSetElement_" + i;
+
+                var elemRT = element.transform as RectTransform;
+                StripLayoutComponents(element);
+
+                elemRT.anchorMin = new Vector2(0f, 1f);
+                elemRT.anchorMax = new Vector2(1f, 1f);
+                elemRT.pivot = new Vector2(0.5f, 1f);
+                elemRT.anchoredPosition = new Vector2(0f, i * -spacing);
+                elemRT.sizeDelta = new Vector2(0f, rowHeight);
+
+                var elemImg = element.GetComponent<Image>();
+                if (elemImg != null && descImg != null)
+                {
+                    elemImg.sprite = descImg.sprite;
+                    elemImg.type = descImg.type;
+                    elemImg.color = descImg.color;
+                }
+
+                var btn = element.GetComponent<Button>();
+                if (btn != null)
+                {
+                    btn.onClick.RemoveAllListeners();
+                    btn.onClick.AddListener(() =>
+                    {
+                        if (_activeTab == 2)
+                        {
+                            _armorSelectedSlot = idx;
+                            RefreshArmorPanel();
+                        }
+                        else
+                        {
+                            SelectClass(idx);
+                        }
+                        if (EventSystem.current != null)
+                            EventSystem.current.SetSelectedGameObject(null);
+                    });
+                    btn.navigation = new Navigation { mode = Navigation.Mode.None };
+                }
+
+                // Icon layout
+                float iconSize = rowHeight - 8f;
+                float iconPadding = 4f;
+                float textLeftOffset = iconPadding + iconSize + 6f;
+
+                var iconTr = element.transform.Find("icon");
+                if (iconTr != null)
+                {
+                    var iconRT = iconTr as RectTransform;
+                    if (iconRT != null)
+                    {
+                        iconRT.anchorMin = new Vector2(0f, 0.5f);
+                        iconRT.anchorMax = new Vector2(0f, 0.5f);
+                        iconRT.pivot = new Vector2(0f, 0.5f);
+                        iconRT.sizeDelta = new Vector2(iconSize, iconSize);
+                        iconRT.anchoredPosition = new Vector2(iconPadding, 0f);
+                    }
+                    iconTr.gameObject.SetActive(false);
+                }
+
+                var nameTr = element.transform.Find("name");
+                if (nameTr != null)
+                {
+                    var nameRT = nameTr as RectTransform;
+                    if (nameRT != null)
+                    {
+                        nameRT.anchorMin = new Vector2(0f, 0f);
+                        nameRT.anchorMax = new Vector2(1f, 1f);
+                        nameRT.pivot = new Vector2(0.5f, 0.5f);
+                        nameRT.offsetMin = new Vector2(textLeftOffset, 0f);
+                        nameRT.offsetMax = new Vector2(-4f, 0f);
+                    }
+                    var nameTxt = nameTr.GetComponent<TMP_Text>();
+                    if (nameTxt != null)
+                    {
+                        nameTxt.enableAutoSizing = false;
+                        nameTxt.fontSize = Mathf.Max(nameTxt.fontSize, 24f);
+                        nameTxt.alignment = TextAlignmentOptions.MidlineLeft;
+                    }
+                }
+
+                var durTr = element.transform.Find("Durability");
+                if (durTr != null) durTr.gameObject.SetActive(false);
+                var qualTr = element.transform.Find("QualityLevel");
+                if (qualTr != null) qualTr.gameObject.SetActive(false);
+                var selTr = element.transform.Find("selected");
+                if (selTr != null)
+                {
+                    selTr.gameObject.SetActive(false);
+                    var selImg = selTr.GetComponent<Image>();
+                    if (selImg != null)
+                        selImg.color = new Color(0.83f, 0.64f, 0.31f, 0.5f);
+                }
+
+                _classElements.Add(element);
+            }
+
+            // Update content height for scrolling
+            float contentHeight = needed > 0 ? ((needed - 1) * spacing + rowHeight) : rowHeight;
+            _recipeListRoot.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, contentHeight);
         }
 
         private void RefreshArmorPanel()
         {
             var player = Player.m_localPlayer;
-            string[] slots = ArmorUpgradeSystem.GetSlotNames();
+            var allSets = ArmorUpgradeSystem.GetAllSets();
             int points = player != null ? SkillPointSystem.GetPoints(player) : 0;
-            bool fullSet = player != null && ArmorUpgradeSystem.IsFullSetEquipped(player);
 
-            // Update list entries to show armor slots with equipped item names and icons
+            // Clamp selection
+            if (_armorSelectedSlot < 0) _armorSelectedSlot = 0;
+            if (_armorSelectedSlot >= allSets.Length) _armorSelectedSlot = allSets.Length - 1;
+
+            // Ensure enough list elements exist for all armor sets
+            EnsureArmorListElements(allSets.Length);
+
+            // ── Left panel: show all armor sets ──
             for (int i = 0; i < _classElements.Count; i++)
             {
-                if (i < slots.Length)
+                if (i < allSets.Length)
                 {
                     _classElements[i].SetActive(true);
-                    var item = player != null ? ArmorUpgradeSystem.GetEquippedItem(player, i) : null;
-                    int level = ArmorUpgradeSystem.GetUpgradeLevel(item);
+                    var set = allSets[i];
+                    bool equipped = player != null && ArmorUpgradeSystem.IsSetEquipped(player, set);
+                    int level = player != null ? ArmorUpgradeSystem.GetSetLevel(player, set) : 0;
 
                     // Update name text
                     var nameTr = _classElements[i].transform.Find("name");
                     var nameTxt = nameTr != null ? nameTr.GetComponent<TMP_Text>() : null;
                     if (nameTxt != null)
                     {
-                        if (item != null)
-                        {
-                            string itemName = Localization.instance.Localize(item.m_shared.m_name);
-                            string levelTag = level > 0
-                                ? $"  <size=16><color=#D4A24E>+{level}</color></size>"
-                                : "";
-                            nameTxt.text = $"{itemName}{levelTag}";
-                            nameTxt.color = Color.white;
-                        }
-                        else
-                        {
-                            nameTxt.text = $"{slots[i]} — Empty";
-                            nameTxt.color = new Color(0.4f, 0.4f, 0.4f);
-                        }
+                        string levelTag = level > 0
+                            ? $"  <size=16><color=#D4A24E>+{level}</color></size>"
+                            : "";
+                        nameTxt.text = $"{set.DisplayName}{levelTag}";
+                        nameTxt.color = equipped ? Color.white : new Color(0.4f, 0.4f, 0.4f);
                     }
 
-                    // Update icon to show equipped item's icon
+                    // Update icon from ObjectDB prefab
                     var iconTr = _classElements[i].transform.Find("icon");
                     if (iconTr != null)
                     {
                         var iconImg = iconTr.GetComponent<Image>();
                         if (iconImg != null)
                         {
-                            if (item != null)
+                            var icon = ArmorUpgradeSystem.GetSetIcon(set);
+                            if (icon != null)
                             {
-                                var icon = item.GetIcon();
-                                if (icon != null)
-                                {
-                                    iconImg.sprite = icon;
-                                    iconImg.color = Color.white;
-                                    iconImg.preserveAspect = true;
-                                    iconTr.gameObject.SetActive(true);
-                                }
-                                else
-                                {
-                                    iconTr.gameObject.SetActive(false);
-                                }
+                                iconImg.sprite = icon;
+                                iconImg.color = equipped ? Color.white : new Color(0.3f, 0.3f, 0.3f);
+                                iconImg.preserveAspect = true;
+                                iconTr.gameObject.SetActive(true);
                             }
                             else
                             {
@@ -2714,7 +2921,7 @@ namespace StartingClassMod
                         }
                     }
 
-                    // Highlight selected slot
+                    // Highlight selected set
                     var selTr = _classElements[i].transform.Find("selected");
                     if (selTr != null)
                         selTr.gameObject.SetActive(i == _armorSelectedSlot);
@@ -2725,23 +2932,21 @@ namespace StartingClassMod
                 }
             }
 
-            // ── Description panel: upgrade tree for the SELECTED armor piece ──
+            // ── Description panel: upgrade tree for the SELECTED set ──
             if (_recipeIcon != null)
                 _recipeIcon.enabled = false;
 
-            var selItem = (_armorSelectedSlot >= 0 && _armorSelectedSlot < slots.Length && player != null)
-                ? ArmorUpgradeSystem.GetEquippedItem(player, _armorSelectedSlot)
-                : null;
-            int currentLevel = ArmorUpgradeSystem.GetUpgradeLevel(selItem);
+            var selSet = (_armorSelectedSlot >= 0 && _armorSelectedSlot < allSets.Length)
+                ? allSets[_armorSelectedSlot] : null;
+            bool setEquipped = selSet != null && player != null && ArmorUpgradeSystem.IsSetEquipped(player, selSet);
+            int currentLevel = selSet != null && player != null ? ArmorUpgradeSystem.GetSetLevel(player, selSet) : 0;
+
+            // Update preview model to show the selected armor set
+            UpdatePreviewArmorSet(selSet);
 
             if (_recipeName != null)
             {
-                if (selItem != null)
-                    _recipeName.text = Localization.instance.Localize(selItem.m_shared.m_name);
-                else if (_armorSelectedSlot >= 0 && _armorSelectedSlot < slots.Length)
-                    _recipeName.text = $"{slots[_armorSelectedSlot]} — Empty";
-                else
-                    _recipeName.text = "Armor";
+                _recipeName.text = selSet != null ? selSet.DisplayName : "Armor";
                 _recipeName.enabled = true;
             }
 
@@ -2749,25 +2954,21 @@ namespace StartingClassMod
             {
                 var sb = new System.Text.StringBuilder();
 
-                if (selItem != null)
+                if (selSet != null)
                 {
-                    string slotLabel = slots[_armorSelectedSlot];
-                    string itemName = Localization.instance.Localize(selItem.m_shared.m_name);
-
-                    // Calculate remaining cost for this piece
+                    int pieceCount = selSet.Pieces.Length;
                     int remainingCost = (ArmorUpgradeSystem.MaxLevel - currentLevel) * ArmorUpgradeSystem.CostPerLevel;
 
-                    // Header
-                    sb.AppendLine($"<align=center><size=26><color=#D4A24E>{itemName}</color></size></align>");
-                    sb.AppendLine($"<align=center><size=16><color=#AAAAAA>{slotLabel} Enhancement</color></size></align>");
+                    // Header (name already shown in _recipeName above)
+                    sb.AppendLine($"<align=center><size=16><color=#AAAAAA>Set Enhancement \u2022 {pieceCount} Pieces</color></size></align>");
                     sb.AppendLine();
-                    if (fullSet)
+                    if (setEquipped)
                         sb.AppendLine($"<align=center><size=17>Available: <color=#8AE58A>{points}</color>  \u2022  Remaining: <color=#D4A24E>{remainingCost}</color></size></align>");
                     else
-                        sb.AppendLine($"<align=center><size=17>Available: <color=#8AE58A>{points}</color>  \u2022  <color=#FF6666>Need Full Set</color></size></align>");
+                        sb.AppendLine($"<align=center><size=17>Available: <color=#8AE58A>{points}</color>  \u2022  <color=#FF6666>Not Equipped</color></size></align>");
                     sb.AppendLine();
 
-                    // Named upgrade tiers with descriptions
+                    // Named upgrade tiers
                     string[] tierNames = { "Reinforced", "Hardened", "Fortified", "Tempered", "Masterwork" };
                     string[] tierDescs = {
                         "Basic reinforcement strengthens the armor's structure.",
@@ -2778,7 +2979,8 @@ namespace StartingClassMod
                     };
 
                     float perLevel = ArmorUpgradeSystem.BonusPerLevel;
-                    float totalBonus = currentLevel * perLevel;
+                    float totalPerPiece = currentLevel * perLevel;
+                    float totalAllPieces = totalPerPiece * pieceCount;
 
                     for (int lvl = 1; lvl <= ArmorUpgradeSystem.MaxLevel; lvl++)
                     {
@@ -2786,40 +2988,40 @@ namespace StartingClassMod
                         string tierDesc = lvl <= tierDescs.Length ? tierDescs[lvl - 1] : "";
                         bool isUnlocked = lvl <= currentLevel;
                         bool isMax = (lvl == ArmorUpgradeSystem.MaxLevel);
+                        float tierTotal = perLevel * pieceCount;
 
                         if (isUnlocked)
                         {
-                            // ── Unlocked tier ──
                             string accentColor = "#E5C56A";
-                            sb.AppendLine($"<color={accentColor}>━━━━━━━━━━━━━━━━━━━━</color>");
+                            sb.AppendLine($"<align=center><color={accentColor}>━━━━━━━━━━━━━━━━━━━━━━</color></align>");
                             sb.AppendLine($"<size=22><color={accentColor}>\u2605 {tierName}</color></size>");
                             sb.AppendLine($"<size=14><color=#D4A24E>Enhancement</color> <color={accentColor}>\u2014 Unlocked</color></size>");
                             sb.AppendLine();
                             sb.AppendLine($"<size=16>{tierDesc}</size>");
                             sb.AppendLine();
-                            sb.AppendLine($"<size=15><color=#8AE58A>+{perLevel:F0} Armor Protection</color></size>");
+                            sb.AppendLine($"<size=15><color=#8AE58A>+{perLevel:F0} per piece ({pieceCount} pcs = +{tierTotal:F0} Armor)</color></size>");
+                            sb.AppendLine($"<align=center><color={accentColor}>━━━━━━━━━━━━━━━━━━━━━━</color></align>");
                         }
                         else
                         {
-                            // ── Locked tier ──
                             string borderColor = isMax ? "#8B4513" : "#555555";
                             string nameColor = isMax ? "#D4A24E" : "#BBBBBB";
                             string descColor = isMax ? "#999999" : "#888888";
                             string icon = isMax ? "\u25C6" : "\u25C8";
 
-                            sb.AppendLine($"<color={borderColor}>━━━━━━━━━━━━━━━━━━━━</color>");
+                            sb.AppendLine($"<align=center><color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━</color></align>");
                             sb.AppendLine($"<size=22><color={nameColor}>{icon} {tierName}</color></size>");
                             sb.AppendLine($"<size=14><color=#D4A24E>Enhancement</color> <color=#777777>\u2022 Tier {lvl} \u2022 {ArmorUpgradeSystem.CostPerLevel} pts</color></size>");
                             sb.AppendLine();
                             sb.AppendLine($"<size=16><color={descColor}>{tierDesc}</color></size>");
                             sb.AppendLine();
-                            sb.AppendLine($"<size=15><color={descColor}>+{perLevel:F0} Armor Protection</color></size>");
+                            sb.AppendLine($"<size=15><color={descColor}>+{perLevel:F0} per piece ({pieceCount} pcs = +{tierTotal:F0} Armor)</color></size>");
                             sb.AppendLine();
                             string haveColor = points >= ArmorUpgradeSystem.CostPerLevel ? "#8AE58A" : "#666666";
                             sb.AppendLine($"<size=15><color=#D4A24E>\u25C6 {ArmorUpgradeSystem.CostPerLevel} Skill Points</color>  <color={haveColor}>(You have: {points})</color></size>");
+                            sb.AppendLine($"<align=center><color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━</color></align>");
                         }
 
-                        // Connector between tiers
                         if (lvl < ArmorUpgradeSystem.MaxLevel)
                         {
                             string arrowColor = lvl < currentLevel ? "#E5C56A" : "#555555";
@@ -2828,23 +3030,11 @@ namespace StartingClassMod
                         }
                     }
 
-                    // Total bonus summary at the bottom
+                    // Total bonus summary (after the last tier's bottom divider)
                     if (currentLevel > 0)
                     {
-                        sb.AppendLine();
-                        sb.AppendLine($"<color=#E5C56A>━━━━━━━━━━━━━━━━━━━━</color>");
-                        sb.AppendLine($"<align=center><size=17><color=#8AE58A>Total: +{totalBonus:F0} Armor Protection</color></size></align>");
+                        sb.AppendLine($"<align=center><size=17><color=#8AE58A>Total: +{totalPerPiece:F0} per piece \u2022 +{totalAllPieces:F0} Armor across set</color></size></align>");
                     }
-                }
-                else
-                {
-                    // Empty slot
-                    string slotLabel = (_armorSelectedSlot >= 0 && _armorSelectedSlot < slots.Length)
-                        ? slots[_armorSelectedSlot] : "Armor";
-                    sb.AppendLine($"<align=center><size=26><color=#D4A24E>{slotLabel}</color></size></align>");
-                    sb.AppendLine($"<align=center><size=16><color=#AAAAAA>Enhancement</color></size></align>");
-                    sb.AppendLine();
-                    sb.AppendLine($"<align=center><size=17><color=#999999>Equip {slotLabel.ToLower()} armor to view enhancements</color></size></align>");
                 }
 
                 _recipeDescription.text = sb.ToString();
@@ -2853,26 +3043,23 @@ namespace StartingClassMod
                 LayoutRebuilder.ForceRebuildLayoutImmediate(_recipeDescription.rectTransform);
             }
 
-            // Craft button — requires full set equipped to upgrade selected slot
+            // Craft button
             if (_craftButton != null)
             {
-                int selLevel = ArmorUpgradeSystem.GetUpgradeLevel(selItem);
-                bool selMaxed = selLevel >= ArmorUpgradeSystem.MaxLevel;
+                bool selMaxed = currentLevel >= ArmorUpgradeSystem.MaxLevel;
                 bool canAfford = points >= ArmorUpgradeSystem.CostPerLevel;
 
-                _craftButton.interactable = selItem != null && fullSet && !selMaxed && canAfford;
+                _craftButton.interactable = setEquipped && !selMaxed && canAfford;
                 if (_craftButtonLabel != null)
                 {
-                    if (selItem == null)
-                        _craftButtonLabel.text = "No Armor";
-                    else if (!fullSet)
-                        _craftButtonLabel.text = "Need Full Set";
+                    if (!setEquipped)
+                        _craftButtonLabel.text = "Not Equipped";
                     else if (selMaxed)
                         _craftButtonLabel.text = "Max Level";
                     else if (!canAfford)
                         _craftButtonLabel.text = $"Need {ArmorUpgradeSystem.CostPerLevel} pts";
                     else
-                        _craftButtonLabel.text = $"Enhance ({ArmorUpgradeSystem.CostPerLevel} pts)";
+                        _craftButtonLabel.text = $"Enhance Set ({ArmorUpgradeSystem.CostPerLevel} pts)";
                 }
             }
         }
@@ -2882,11 +3069,11 @@ namespace StartingClassMod
             var player = Player.m_localPlayer;
             if (player == null) return;
 
-            string[] slots = ArmorUpgradeSystem.GetSlotNames();
-            if (_armorSelectedSlot < 0 || _armorSelectedSlot >= slots.Length) return;
+            var allSets = ArmorUpgradeSystem.GetAllSets();
+            if (_armorSelectedSlot < 0 || _armorSelectedSlot >= allSets.Length) return;
 
-            var item = ArmorUpgradeSystem.GetEquippedItem(player, _armorSelectedSlot);
-            if (ArmorUpgradeSystem.TryUpgrade(player, item))
+            var set = allSets[_armorSelectedSlot];
+            if (ArmorUpgradeSystem.TryUpgradeSet(player, set))
             {
                 player.m_skillLevelupEffects.Create(player.GetHeadPoint(), player.transform.rotation, player.transform);
                 RefreshArmorPanel();

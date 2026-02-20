@@ -1,109 +1,192 @@
+using System.Collections.Generic;
+
 namespace StartingClassMod
 {
+    public class ArmorSetDef
+    {
+        public string Id;
+        public string DisplayName;
+        public string[] Pieces;
+        public string IconPrefab;
+
+        public ArmorSetDef(string id, string displayName, string[] pieces, string iconPrefab)
+        {
+            Id = id;
+            DisplayName = displayName;
+            Pieces = pieces;
+            IconPrefab = iconPrefab;
+        }
+    }
+
     public static class ArmorUpgradeSystem
     {
         public const int MaxLevel = 5;
         public const int CostPerLevel = 0;
         public const float BonusPerLevel = 2f;
 
-        private const string EnhanceKey = "StartingClassMod_EnhanceLevel";
+        private const string KeyPrefix = "StartingClassMod_SetLevel_";
 
-        private static readonly string[] Slots = { "Chest", "Legs", "Helmet", "Shoulder" };
+        private static readonly ArmorSetDef[] Sets =
+        {
+            new ArmorSetDef("Rag", "Rag Armor",
+                new[] { "ArmorRagsChest", "ArmorRagsLegs" },
+                "ArmorRagsChest"),
 
-        public static string[] GetSlotNames() => Slots;
+            new ArmorSetDef("Leather", "Leather Armor",
+                new[] { "ArmorLeatherChest", "ArmorLeatherLegs", "HelmetLeather", "CapeDeerHide" },
+                "ArmorLeatherChest"),
+
+            new ArmorSetDef("TrollLeather", "Troll Leather Armor",
+                new[] { "ArmorTrollLeatherChest", "ArmorTrollLeatherLegs", "HelmetTrollLeather", "CapeTrollHide" },
+                "ArmorTrollLeatherChest"),
+
+            new ArmorSetDef("Bronze", "Bronze Armor",
+                new[] { "ArmorBronzeChest", "ArmorBronzeLegs", "HelmetBronze" },
+                "ArmorBronzeChest"),
+
+            new ArmorSetDef("Iron", "Iron Armor",
+                new[] { "ArmorIronChest", "ArmorIronLegs", "HelmetIron" },
+                "ArmorIronChest"),
+
+            new ArmorSetDef("Root", "Root Armor",
+                new[] { "ArmorRootChest", "ArmorRootLegs", "HelmetRoot" },
+                "ArmorRootChest"),
+
+            new ArmorSetDef("Wolf", "Wolf Armor",
+                new[] { "ArmorWolfChest", "ArmorWolfLegs", "HelmetDrake", "CapeWolf" },
+                "ArmorWolfChest"),
+
+            new ArmorSetDef("Padded", "Padded Armor",
+                new[] { "ArmorPaddedCuirass", "ArmorPaddedGreaves", "HelmetPadded" },
+                "ArmorPaddedCuirass"),
+
+            new ArmorSetDef("Fenris", "Fenris Armor",
+                new[] { "ArmorFenringChest", "ArmorFenringLegs", "HelmetFenring" },
+                "ArmorFenringChest"),
+
+            new ArmorSetDef("Carapace", "Carapace Armor",
+                new[] { "ArmorCarapaceChest", "ArmorCarapaceLegs", "HelmetCarapace", "CapeFeather" },
+                "ArmorCarapaceChest"),
+
+            new ArmorSetDef("Mage", "Mage Armor",
+                new[] { "ArmorMageChest", "ArmorMageLegs", "HelmetMage" },
+                "ArmorMageChest"),
+
+            new ArmorSetDef("Flametal", "Flametal Armor",
+                new[] { "ArmorFlametalChest", "ArmorFlametalLegs", "HelmetFlametal" },
+                "ArmorFlametalChest"),
+        };
+
+        // Cached lookup: prefab name → set def
+        private static Dictionary<string, ArmorSetDef> _prefabToSet;
+
+        public static ArmorSetDef[] GetAllSets() => Sets;
 
         /// <summary>
-        /// Get the enhancement level stored on a specific armor item.
-        /// The level persists on the item itself, surviving unequip/re-equip.
+        /// Get the enhancement level for an armor set, stored on the player.
         /// </summary>
-        public static int GetUpgradeLevel(ItemDrop.ItemData item)
+        public static int GetSetLevel(Player player, ArmorSetDef set)
         {
-            if (item == null) return 0;
-            if (!item.m_customData.TryGetValue(EnhanceKey, out string val)) return 0;
+            if (player == null || set == null) return 0;
+            if (!player.m_customData.TryGetValue(KeyPrefix + set.Id, out string val)) return 0;
             return int.TryParse(val, out int level) ? level : 0;
         }
 
         /// <summary>
-        /// Get the armor bonus for a specific item based on its enhancement level.
+        /// Check if the player has ALL pieces of a specific armor set equipped.
         /// </summary>
-        public static float GetArmorBonus(ItemDrop.ItemData item)
+        public static bool IsSetEquipped(Player player, ArmorSetDef set)
         {
-            return GetUpgradeLevel(item) * BonusPerLevel;
-        }
-
-        /// <summary>
-        /// Get the equipped armor piece for a slot index (0=Chest, 1=Legs, 2=Helmet, 3=Shoulder).
-        /// </summary>
-        public static ItemDrop.ItemData GetEquippedItem(Player player, int slotIndex)
-        {
-            if (player == null) return null;
+            if (player == null || set == null) return false;
             var inv = player.GetInventory();
-            if (inv == null) return null;
+            if (inv == null) return false;
 
-            ItemDrop.ItemData.ItemType targetType;
-            switch (slotIndex)
-            {
-                case 0: targetType = ItemDrop.ItemData.ItemType.Chest; break;
-                case 1: targetType = ItemDrop.ItemData.ItemType.Legs; break;
-                case 2: targetType = ItemDrop.ItemData.ItemType.Helmet; break;
-                case 3: targetType = ItemDrop.ItemData.ItemType.Shoulder; break;
-                default: return null;
-            }
-
+            var equipped = new HashSet<string>();
             foreach (var item in inv.GetAllItems())
             {
-                if (item.m_equipped && item.m_shared.m_itemType == targetType)
-                    return item;
+                if (!item.m_equipped) continue;
+                string prefab = GetItemPrefabName(item);
+                if (prefab != null) equipped.Add(prefab);
             }
-            return null;
-        }
 
-        /// <summary>
-        /// Check if the player has armor equipped in ALL 4 slots (full set).
-        /// </summary>
-        public static bool IsFullSetEquipped(Player player)
-        {
-            if (player == null) return false;
-            for (int i = 0; i < Slots.Length; i++)
+            foreach (var piece in set.Pieces)
             {
-                if (GetEquippedItem(player, i) == null) return false;
+                if (!equipped.Contains(piece)) return false;
             }
             return true;
         }
 
         /// <summary>
-        /// Enhance a specific armor item. The level is stored on the item itself
-        /// and persists through unequip, chest storage, trading, etc.
+        /// Upgrade an entire armor set by one level.
         /// </summary>
-        public static bool TryUpgrade(Player player, ItemDrop.ItemData item)
+        public static bool TryUpgradeSet(Player player, ArmorSetDef set)
         {
-            if (player == null || item == null) return false;
-            if (!IsFullSetEquipped(player)) return false;
+            if (player == null || set == null) return false;
+            if (!IsSetEquipped(player, set)) return false;
 
-            int current = GetUpgradeLevel(item);
+            int current = GetSetLevel(player, set);
             if (current >= MaxLevel) return false;
 
             if (!SkillPointSystem.SpendPoints(player, CostPerLevel)) return false;
 
-            item.m_customData[EnhanceKey] = (current + 1).ToString();
-            StartingClassPlugin.Log($"Armor enhanced: {item.m_shared.m_name} to level {current + 1}");
+            player.m_customData[KeyPrefix + set.Id] = (current + 1).ToString();
+            StartingClassPlugin.Log($"Armor set enhanced: {set.DisplayName} to level {current + 1}");
             return true;
         }
 
         /// <summary>
-        /// Total enhancement bonus across all currently equipped armor.
+        /// Find which armor set a given item belongs to (for the Harmony patch).
         /// </summary>
-        public static float GetTotalEquippedBonus(Player player)
+        public static ArmorSetDef FindSetForItem(ItemDrop.ItemData item)
         {
-            if (player == null) return 0f;
-            float total = 0f;
-            for (int i = 0; i < Slots.Length; i++)
+            if (item == null) return null;
+            string prefab = GetItemPrefabName(item);
+            if (prefab == null) return null;
+
+            if (_prefabToSet == null) BuildPrefabCache();
+            _prefabToSet.TryGetValue(prefab, out ArmorSetDef set);
+            return set;
+        }
+
+        /// <summary>
+        /// Get the armor bonus to apply to a single item based on its set's level.
+        /// Used by the Harmony patch on GetArmor().
+        /// </summary>
+        public static float GetItemSetBonus(Player player, ItemDrop.ItemData item)
+        {
+            var set = FindSetForItem(item);
+            if (set == null) return 0f;
+            return GetSetLevel(player, set) * BonusPerLevel;
+        }
+
+        /// <summary>
+        /// Get the icon sprite for a set via ObjectDB prefab lookup.
+        /// </summary>
+        public static UnityEngine.Sprite GetSetIcon(ArmorSetDef set)
+        {
+            if (set == null || string.IsNullOrEmpty(set.IconPrefab)) return null;
+            var prefab = ObjectDB.instance?.GetItemPrefab(set.IconPrefab);
+            if (prefab == null) return null;
+            var drop = prefab.GetComponent<ItemDrop>();
+            return drop?.m_itemData?.GetIcon();
+        }
+
+        private static string GetItemPrefabName(ItemDrop.ItemData item)
+        {
+            if (item.m_dropPrefab != null) return item.m_dropPrefab.name;
+            return null;
+        }
+
+        private static void BuildPrefabCache()
+        {
+            _prefabToSet = new Dictionary<string, ArmorSetDef>();
+            foreach (var set in Sets)
             {
-                var item = GetEquippedItem(player, i);
-                if (item != null)
-                    total += GetArmorBonus(item);
+                foreach (var piece in set.Pieces)
+                {
+                    _prefabToSet[piece] = set;
+                }
             }
-            return total;
         }
     }
 }

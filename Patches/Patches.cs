@@ -292,16 +292,17 @@ namespace StartingClassMod
         }
 
         /// <summary>
-        /// Enhance individual armor piece protection values permanently.
-        /// The enhancement level is stored on the item itself via m_customData,
-        /// so it persists through unequip, chest storage, trading, etc.
+        /// Enhance armor piece protection based on the equipped set's enhancement level.
+        /// The enhancement level is stored per-set on the player via m_customData.
         /// </summary>
         [HarmonyPatch(typeof(ItemDrop.ItemData), nameof(ItemDrop.ItemData.GetArmor), new System.Type[] { typeof(int), typeof(float) })]
         public static class ItemData_GetArmor_Patch
         {
             static void Postfix(ItemDrop.ItemData __instance, ref float __result)
             {
-                __result += ArmorUpgradeSystem.GetArmorBonus(__instance);
+                var player = Player.m_localPlayer;
+                if (player == null || !__instance.m_equipped) return;
+                __result += ArmorUpgradeSystem.GetItemSetBonus(player, __instance);
             }
         }
 
