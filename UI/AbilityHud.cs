@@ -80,12 +80,15 @@ namespace StartingClassMod
 
             if (hud.m_gpCooldown != null)
             {
+                hud.m_gpCooldown.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
+                hud.m_gpCooldown.overflowMode = TMPro.TextOverflowModes.Overflow;
+
                 if (MarkedByFate.IsActive(player))
                 {
-                    // Duration running — show time remaining and mark count
                     float dur = MarkedByFate.GetDurationRemaining(player);
                     int marks = MarkedByFate.GetActiveMarkCount();
-                    hud.m_gpCooldown.text = $"Active {StatusEffect.GetTimeString(dur)} ({marks})";
+                    hud.m_gpCooldown.text = $"{StatusEffect.GetTimeString(dur)} ({marks})";
+                    hud.m_gpCooldown.color = Color.white;
                     if (hud.m_gpIcon != null)
                         hud.m_gpIcon.color = Color.white;
                 }
@@ -95,12 +98,14 @@ namespace StartingClassMod
                     if (cd > 0f)
                     {
                         hud.m_gpCooldown.text = StatusEffect.GetTimeString(cd);
+                        hud.m_gpCooldown.color = new Color(0.6f, 0.6f, 0.6f, 1f);
                         if (hud.m_gpIcon != null)
                             hud.m_gpIcon.color = CooldownTint;
                     }
                     else
                     {
                         hud.m_gpCooldown.text = "Ready";
+                        hud.m_gpCooldown.color = Color.white;
                         if (hud.m_gpIcon != null)
                             hud.m_gpIcon.color = Color.white;
                     }
@@ -115,10 +120,14 @@ namespace StartingClassMod
 
             if (hud.m_gpCooldown != null)
             {
+                hud.m_gpCooldown.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
+                hud.m_gpCooldown.overflowMode = TMPro.TextOverflowModes.Overflow;
+
                 if (BladeDance.IsActive())
                 {
                     float remaining = BladeDance.GetTimeRemaining();
-                    hud.m_gpCooldown.text = $"Active {remaining:0}s";
+                    hud.m_gpCooldown.text = $"{remaining:0}s";
+                    hud.m_gpCooldown.color = Color.white;
                     if (hud.m_gpIcon != null)
                         hud.m_gpIcon.color = Color.white;
                 }
@@ -128,12 +137,14 @@ namespace StartingClassMod
                     if (cd > 0f)
                     {
                         hud.m_gpCooldown.text = StatusEffect.GetTimeString(cd);
+                        hud.m_gpCooldown.color = new Color(0.6f, 0.6f, 0.6f, 1f);
                         if (hud.m_gpIcon != null)
                             hud.m_gpIcon.color = CooldownTint;
                     }
                     else
                     {
                         hud.m_gpCooldown.text = "Ready";
+                        hud.m_gpCooldown.color = Color.white;
                         if (hud.m_gpIcon != null)
                             hud.m_gpIcon.color = Color.white;
                     }

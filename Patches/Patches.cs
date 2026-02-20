@@ -292,6 +292,20 @@ namespace StartingClassMod
         }
 
         /// <summary>
+        /// Enhance individual armor piece protection values permanently.
+        /// The enhancement level is stored on the item itself via m_customData,
+        /// so it persists through unequip, chest storage, trading, etc.
+        /// </summary>
+        [HarmonyPatch(typeof(ItemDrop.ItemData), nameof(ItemDrop.ItemData.GetArmor), new System.Type[] { typeof(int), typeof(float) })]
+        public static class ItemData_GetArmor_Patch
+        {
+            static void Postfix(ItemDrop.ItemData __instance, ref float __result)
+            {
+                __result += ArmorUpgradeSystem.GetArmorBonus(__instance);
+            }
+        }
+
+        /// <summary>
         /// Intercept guardian power activation. When a class ability is selected
         /// as the active power, run that ability instead of the forsaken power.
         /// </summary>

@@ -81,6 +81,9 @@ namespace StartingClassMod
             if (className != "Assassin") return;
             if (!AbilityManager.IsAbilityUnlocked(player, "Assassin", 1)) return;
 
+            // Block if already active
+            if (IsActive(player)) return;
+
             // Check cooldown
             if (GetCooldownRemaining(player) > 0f)
             {

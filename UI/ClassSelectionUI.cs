@@ -43,18 +43,20 @@ namespace StartingClassMod
         // ── Tab buttons ──
         private GameObject _tabClasses;
         private GameObject _tabSkills;
-        private GameObject _tabAbout;
-        private int _activeTab; // 0 = Classes, 1 = Skills, 2 = About
-        private static readonly string[] TabNames = { "Classes", "Skills", "About" };
+        private GameObject _tabArmor;
+        private int _activeTab; // 0 = Classes, 1 = Skills, 2 = Armor
+        private static readonly string[] TabNames = { "Classes", "Skills", "Armor" };
 
-        // ── About panel ──
-        private GameObject _aboutPanel;
+        // ── Armor panel ──
+        private GameObject _armorPanel;
+        private TMP_Text _armorText;
+        private ScrollRect _armorScrollRect;
+        private int _armorSelectedSlot; // 0=Chest, 1=Legs, 2=Helmet, 3=Shoulder
 
         // ── Skills panel ──
         private GameObject _skillsPanel;
         private TMP_Text _skillsText;
         private ScrollRect _skillsScrollRect;
-        private ScrollRect _aboutScrollRect;
         private Button _unlockButton;
         private TMP_Text _unlockButtonLabel;
 
@@ -240,6 +242,7 @@ namespace StartingClassMod
                         }
                         if (EventSystem.current != null)
                             EventSystem.current.SetSelectedGameObject(null);
+
                     }
                 }
                 if (ZInput.GetButtonDown("JoyLStickRight") || ZInput.GetButtonDown("JoyDPadRight"))
@@ -255,6 +258,7 @@ namespace StartingClassMod
                         }
                         if (EventSystem.current != null)
                             EventSystem.current.SetSelectedGameObject(null);
+
                     }
                 }
             }
@@ -279,6 +283,13 @@ namespace StartingClassMod
                         _skillsScrollRect.verticalNormalizedPosition -= 0.1f;
                         _skillsScrollRect.verticalNormalizedPosition = Mathf.Clamp01(_skillsScrollRect.verticalNormalizedPosition);
                     }
+                }
+                else if (_activeTab == 2)
+                {
+                    // Armor tab: navigate armor slots
+                    string[] slots = ArmorUpgradeSystem.GetSlotNames();
+                    _armorSelectedSlot = Mathf.Min(slots.Length - 1, _armorSelectedSlot + 1);
+                    RefreshArmorPanel();
                 }
                 else
                 {
@@ -310,6 +321,12 @@ namespace StartingClassMod
                         _skillsScrollRect.verticalNormalizedPosition = Mathf.Clamp01(_skillsScrollRect.verticalNormalizedPosition);
                     }
                 }
+                else if (_activeTab == 2)
+                {
+                    // Armor tab: navigate armor slots
+                    _armorSelectedSlot = Mathf.Max(0, _armorSelectedSlot - 1);
+                    RefreshArmorPanel();
+                }
                 else
                 {
                     // Left panel: navigate class list
@@ -340,9 +357,14 @@ namespace StartingClassMod
                     }
                     // Middle panel (focus 1): A does nothing (just scrollable text)
                 }
+                else if (_activeTab == 2)
+                {
+                    // Armor tab: upgrade selected armor slot
+                    OnUpgradeArmorClicked();
+                }
                 else
                 {
-                    // Classes/About tab: confirm class selection
+                    // Classes tab: confirm class selection
                     if (_selectedIndex >= 0 && _selectedIndex < _classes.Count)
                         ConfirmSelection();
                 }
@@ -354,8 +376,8 @@ namespace StartingClassMod
                 activeScroll = _descriptionScrollRect;
             else if (_activeTab == 1 && _skillsScrollRect != null)
                 activeScroll = _skillsScrollRect;
-            else if (_activeTab == 2 && _aboutScrollRect != null)
-                activeScroll = _aboutScrollRect;
+            else if (_activeTab == 2 && _descriptionScrollRect != null)
+                activeScroll = _descriptionScrollRect;
 
             if (activeScroll != null)
             {
@@ -606,17 +628,39 @@ namespace StartingClassMod
             foreach (var c in _clonedPanel.GetComponentsInChildren<UIGroupHandler>(true))
                 Destroy(c);
 
-            // Hide the gold outline frame and ALL gold decorative lines (including nested ones)
+            // Hide the gold outline frame and ALL gold decorative lines/accents
             var selectedFrame = _clonedPanel.transform.Find("selected_frame");
             if (selectedFrame != null)
                 selectedFrame.gameObject.SetActive(false);
             foreach (Transform t in _clonedPanel.GetComponentsInChildren<Transform>(true))
             {
-                if (t.name.Contains("BraidLine"))
+                if (t == _clonedPanel.transform) continue;
+                string n = t.name;
+                // Hide any named decorative elements
+                if (n.Contains("BraidLine") || n.Contains("Border") || n.Contains("border")
+                    || n.Contains("Line") || n.Contains("Bkg2") || n.Contains("Outline"))
+                {
                     t.gameObject.SetActive(false);
+                    continue;
+                }
+                // Hide any very thin Image children (accent lines) — height or width < 4px
+                var rt = t as RectTransform;
+                var img = t.GetComponent<Image>();
+                if (rt != null && img != null && t.childCount == 0)
+                {
+                    float h = Mathf.Abs(rt.sizeDelta.y);
+                    float w = Mathf.Abs(rt.sizeDelta.x);
+                    if ((h > 0f && h < 4f) || (w > 0f && w < 4f))
+                        t.gameObject.SetActive(false);
+                }
             }
 
-            // All scrollbars in the clone (recipe list + description) are wanted — no hiding needed.
+            // Hide the cloned recipe list scrollbar visually (keep it functional for ScrollRect)
+            if (_recipeScrollbar != null)
+            {
+                var sbImages = _recipeScrollbar.GetComponentsInChildren<Image>(true);
+                foreach (var img in sbImages) img.color = new Color(0f, 0f, 0f, 0f);
+            }
 
             // Force the left class-list panel to match the original (pre-extra) description width.
             var listPanelRT = _clonedPanel.transform.Find("RecipeList") as RectTransform;
@@ -841,7 +885,7 @@ namespace StartingClassMod
                 scrollbarRT.offsetMax = new Vector2(-2f, -4f);             // extend to top of panel
 
                 var trackImg = scrollbarGO.AddComponent<Image>();
-                trackImg.color = new Color(0f, 0f, 0f, 0.3f);
+                trackImg.color = new Color(0f, 0f, 0f, 0f);
 
                 var slidingGO = new GameObject("Sliding Area", typeof(RectTransform));
                 slidingGO.transform.SetParent(scrollbarGO.transform, false);
@@ -859,7 +903,7 @@ namespace StartingClassMod
                 handleRT.offsetMin = Vector2.zero;
                 handleRT.offsetMax = Vector2.zero;
                 var handleImg = handleGO.GetComponent<Image>();
-                handleImg.color = new Color(0.83f, 0.64f, 0.31f, 0.9f); // gold to match UI
+                handleImg.color = new Color(0f, 0f, 0f, 0f); // hidden but functional
 
                 var descScrollbar = scrollbarGO.AddComponent<Scrollbar>();
                 descScrollbar.handleRect = handleRT;
@@ -886,7 +930,7 @@ namespace StartingClassMod
             foreach (var p in new[] { tabListPanel, tabDescPanel, tabPreviewPanel })
             {
                 if (p == null) continue;
-                p.offsetMin = new Vector2(p.offsetMin.x, p.offsetMin.y + liftUp);
+                p.offsetMin = new Vector2(p.offsetMin.x, p.offsetMin.y + liftUp - 4f);
                 p.offsetMax = new Vector2(p.offsetMax.x, p.offsetMax.y + liftUp);
             }
 
@@ -908,7 +952,7 @@ namespace StartingClassMod
 
                 _tabClasses = CreateTabButton("Classes", 0, tabListPanel, pw, craftW, craftH, uniformTabY);
                 _tabSkills  = CreateTabButton("Skills",  1, tabDescPanel, pw, craftW, craftH, uniformTabY);
-                _tabAbout   = CreateTabButton("About",   2, tabPreviewPanel, pw, craftW, craftH, uniformTabY);
+                _tabArmor   = CreateTabButton("Armor",   2, tabPreviewPanel, pw, craftW, craftH, uniformTabY);
 
                 _activeTab = 0;
                 RefreshTabHighlights();
@@ -953,16 +997,16 @@ namespace StartingClassMod
                     float rightEdge = GetRectRight(aboutPreviewPanel, pw2);
 
                     // Panel background
-                    _aboutPanel = new GameObject("AboutPanel", typeof(RectTransform), typeof(Image));
-                    _aboutPanel.transform.SetParent(_clonedPanel.transform, false);
-                    var aboutRT = _aboutPanel.GetComponent<RectTransform>();
+                    _armorPanel = new GameObject("AboutPanel", typeof(RectTransform), typeof(Image));
+                    _armorPanel.transform.SetParent(_clonedPanel.transform, false);
+                    var aboutRT = _armorPanel.GetComponent<RectTransform>();
                     aboutRT.anchorMin = aboutListPanel.anchorMin;
                     aboutRT.anchorMax = new Vector2(aboutPreviewPanel.anchorMax.x, aboutListPanel.anchorMax.y);
                     aboutRT.pivot = new Vector2(0.5f, 0.5f);
                     aboutRT.offsetMin = new Vector2(leftEdge - aboutRT.anchorMin.x * pw2, aboutListPanel.offsetMin.y);
                     aboutRT.offsetMax = new Vector2(rightEdge - aboutRT.anchorMax.x * pw2, aboutListPanel.offsetMax.y);
 
-                    var aboutImg = _aboutPanel.GetComponent<Image>();
+                    var aboutImg = _armorPanel.GetComponent<Image>();
                     if (aboutDescImg != null && aboutDescImg.sprite != null)
                     {
                         aboutImg.sprite = aboutDescImg.sprite;
@@ -977,7 +1021,7 @@ namespace StartingClassMod
                     // Scroll area inside the About panel
                     float aboutSBWidth = 10f;
                     var aboutScrollGO = new GameObject("AboutScrollArea", typeof(RectTransform), typeof(Image), typeof(Mask));
-                    aboutScrollGO.transform.SetParent(_aboutPanel.transform, false);
+                    aboutScrollGO.transform.SetParent(_armorPanel.transform, false);
                     var aboutScrollRT = aboutScrollGO.GetComponent<RectTransform>();
                     aboutScrollRT.anchorMin = Vector2.zero;
                     aboutScrollRT.anchorMax = Vector2.one;
@@ -1006,7 +1050,8 @@ namespace StartingClassMod
                     aboutTxt.overflowMode = TextOverflowModes.Overflow;
                     aboutTxt.richText = true;
                     aboutTxt.alignment = TextAlignmentOptions.TopLeft;
-                    aboutTxt.text = GetAboutText();
+                    aboutTxt.text = "";
+                    _armorText = aboutTxt;
 
                     var aboutCSF = aboutTextGO.AddComponent<ContentSizeFitter>();
                     aboutCSF.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
@@ -1022,7 +1067,7 @@ namespace StartingClassMod
 
                     // Scrollbar
                     var aboutSBGO = new GameObject("AboutScrollbar", typeof(RectTransform));
-                    aboutSBGO.transform.SetParent(_aboutPanel.transform, false);
+                    aboutSBGO.transform.SetParent(_armorPanel.transform, false);
                     var aboutSBRT = aboutSBGO.GetComponent<RectTransform>();
                     aboutSBRT.anchorMin = new Vector2(1f, 0f);
                     aboutSBRT.anchorMax = new Vector2(1f, 1f);
@@ -1032,7 +1077,7 @@ namespace StartingClassMod
                     aboutSBRT.offsetMax = new Vector2(-2f, -4f);
 
                     var aboutTrack = aboutSBGO.AddComponent<Image>();
-                    aboutTrack.color = new Color(0f, 0f, 0f, 0.3f);
+                    aboutTrack.color = new Color(0f, 0f, 0f, 0f);
 
                     var aboutSliding = new GameObject("Sliding Area", typeof(RectTransform));
                     aboutSliding.transform.SetParent(aboutSBGO.transform, false);
@@ -1050,7 +1095,7 @@ namespace StartingClassMod
                     aboutHandleRT.offsetMin = Vector2.zero;
                     aboutHandleRT.offsetMax = Vector2.zero;
                     var aboutHandleImg = aboutHandle.GetComponent<Image>();
-                    aboutHandleImg.color = new Color(0.83f, 0.64f, 0.31f, 0.9f);
+                    aboutHandleImg.color = new Color(0f, 0f, 0f, 0f);
 
                     var aboutSB = aboutSBGO.AddComponent<Scrollbar>();
                     aboutSB.handleRect = aboutHandleRT;
@@ -1060,10 +1105,10 @@ namespace StartingClassMod
                     aboutSR.verticalScrollbar = aboutSB;
                     aboutSR.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
 
-                    _aboutScrollRect = aboutSR;
+                    _armorScrollRect = aboutSR;
 
                     // Start hidden — Classes tab is default
-                    _aboutPanel.SetActive(false);
+                    _armorPanel.SetActive(false);
                 }
             }
 
@@ -1158,7 +1203,7 @@ namespace StartingClassMod
                     skillsSBRT.offsetMax = new Vector2(-2f, -4f);
 
                     var skillsTrack = skillsSBGO.AddComponent<Image>();
-                    skillsTrack.color = new Color(0f, 0f, 0f, 0.3f);
+                    skillsTrack.color = new Color(0f, 0f, 0f, 0f);
 
                     var skillsSliding = new GameObject("Sliding Area", typeof(RectTransform));
                     skillsSliding.transform.SetParent(skillsSBGO.transform, false);
@@ -1176,7 +1221,7 @@ namespace StartingClassMod
                     skillsHandleRT.offsetMin = Vector2.zero;
                     skillsHandleRT.offsetMax = Vector2.zero;
                     var skillsHandleImg = skillsHandle.GetComponent<Image>();
-                    skillsHandleImg.color = new Color(0.83f, 0.64f, 0.31f, 0.9f);
+                    skillsHandleImg.color = new Color(0f, 0f, 0f, 0f);
 
                     var skillsSB = skillsSBGO.AddComponent<Scrollbar>();
                     skillsSB.handleRect = skillsHandleRT;
@@ -1304,7 +1349,7 @@ namespace StartingClassMod
                     apSBRT.offsetMax = new Vector2(-2f, -4f);
 
                     var apTrack = apSBGO.AddComponent<Image>();
-                    apTrack.color = new Color(0f, 0f, 0f, 0.3f);
+                    apTrack.color = new Color(0f, 0f, 0f, 0f);
 
                     var apSliding = new GameObject("Sliding Area", typeof(RectTransform));
                     apSliding.transform.SetParent(apSBGO.transform, false);
@@ -1322,7 +1367,7 @@ namespace StartingClassMod
                     apHandleRT.offsetMin = Vector2.zero;
                     apHandleRT.offsetMax = Vector2.zero;
                     var apHandleImg = apHandle.GetComponent<Image>();
-                    apHandleImg.color = new Color(0.83f, 0.64f, 0.31f, 0.9f);
+                    apHandleImg.color = new Color(0f, 0f, 0f, 0f);
 
                     var apSB = apSBGO.AddComponent<Scrollbar>();
                     apSB.handleRect = apHandleRT;
@@ -1436,7 +1481,7 @@ namespace StartingClassMod
                 containerRT.pivot = origRecipeList.pivot;
 
                 // Keep a small gap from the description panel and match width to class-list column.
-                float scrollGap = -3f;
+                float scrollGap = 1f;
                 float leftEdge = contentBaseWidth - margin + scrollGap;
                 float rightEdge = leftEdge + columnWidth;
                 float maxRightEdge = totalWidth - margin - 3f;
@@ -1754,7 +1799,16 @@ namespace StartingClassMod
                     btn.onClick.RemoveAllListeners();
                     btn.onClick.AddListener(() =>
                     {
-                        SelectClass(idx);
+                        if (_activeTab == 2)
+                        {
+                            // Armor tab: select armor slot
+                            _armorSelectedSlot = idx;
+                            RefreshArmorPanel();
+                        }
+                        else
+                        {
+                            SelectClass(idx);
+                        }
                         if (EventSystem.current != null)
                             EventSystem.current.SetSelectedGameObject(null);
                     });
@@ -1895,27 +1949,40 @@ namespace StartingClassMod
         {
             bool showClasses = (_activeTab == 0);
             bool showSkills = (_activeTab == 1);
-            bool showAbout = (_activeTab == 2);
+            bool showArmor = (_activeTab == 2);
 
-            // Class list is visible on both Classes and Skills tabs
+            // Class list panel visible on Classes, Skills, and Armor tabs
             var listPanel = _clonedPanel.transform.Find("RecipeList");
             var descPanel = _clonedPanel.transform.Find("Decription");
             var previewPanel = _clonedPanel.transform.Find("PreviewContainer");
-            if (listPanel != null) listPanel.gameObject.SetActive(showClasses || showSkills);
-            if (descPanel != null) descPanel.gameObject.SetActive(showClasses);
-            if (previewPanel != null) previewPanel.gameObject.SetActive(showClasses);
+            if (listPanel != null) listPanel.gameObject.SetActive(showClasses || showSkills || showArmor);
+            if (descPanel != null) descPanel.gameObject.SetActive(showClasses || showArmor);
+            if (previewPanel != null) previewPanel.gameObject.SetActive(showClasses || showArmor);
 
-            // Disable preview camera when not visible to save GPU time
+            // Preview camera on Classes and Armor tabs
             if (_previewCamera != null)
-                _previewCamera.enabled = showClasses;
+                _previewCamera.enabled = showClasses || showArmor;
 
             // Toggle the skills panel (Description column) and abilities panel (Preview column)
             if (_skillsPanel != null) _skillsPanel.SetActive(showSkills);
             if (_activePowerPanel != null) _activePowerPanel.SetActive(showSkills);
             if (showSkills) RefreshSkillsPanel();
 
-            // Toggle the about panel
-            if (_aboutPanel != null) _aboutPanel.SetActive(showAbout);
+            // The old armor overlay panel (full-width) is no longer used on Armor tab
+            if (_armorPanel != null) _armorPanel.SetActive(false);
+
+            // Armor tab reuses the class list + description + preview panels
+            if (showArmor)
+            {
+                RefreshArmorPanel();
+            }
+            else
+            {
+                // Restore class list entries after leaving Armor tab
+                RestoreClassListEntries();
+                if (_selectedIndex >= 0 && _selectedIndex < _classes.Count)
+                    RefreshDetail();
+            }
         }
 
         private void RefreshSkillsPanel()
@@ -1979,7 +2046,7 @@ namespace StartingClassMod
                 {
                     // ── Unlocked ──
                     string accentColor = ability.IsPassive ? "#8AE58A" : "#E5C56A";
-                    sb.AppendLine($"<color={accentColor}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
+                    sb.AppendLine($"<color={accentColor}>━━━━━━━━━━━━━━━━━━━━</color>");
                     sb.AppendLine($"<size=22><color={accentColor}>\u2605 {ability.Name}</color></size>");
                     sb.AppendLine($"<size=14><color={typeColor}>{typeTag}</color> <color={accentColor}>\u2014 Unlocked</color></size>");
                     sb.AppendLine();
@@ -1998,7 +2065,6 @@ namespace StartingClassMod
                         }
                         sb.AppendLine("</color></size>");
                     }
-                    sb.AppendLine($"<color={accentColor}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
                 }
                 else
                 {
@@ -2011,7 +2077,7 @@ namespace StartingClassMod
                     string descColor = isUltimate ? "#999999" : "#888888";
                     string icon = isUltimate ? "\u25C6" : "\u25C8";
 
-                    sb.AppendLine($"<color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
+                    sb.AppendLine($"<color={borderColor}>━━━━━━━━━━━━━━━━━━━━</color>");
                     sb.AppendLine($"<size=22><color={nameColor}>{icon} {ability.Name}</color></size>");
                     sb.AppendLine($"<size=14><color={typeColor}>{typeTag}</color> <color=#777777>\u2022 {tierLabel} \u2022 {ability.PointCost} pts</color></size>");
                     sb.AppendLine();
@@ -2019,7 +2085,6 @@ namespace StartingClassMod
                     sb.AppendLine();
                     string haveColor = currentPoints >= ability.PointCost ? "#8AE58A" : "#666666";
                     sb.AppendLine($"<size=15><color=#D4A24E>\u25C6 {ability.PointCost} Skill Points</color>  <color={haveColor}>(You have: {currentPoints})</color></size>");
-                    sb.AppendLine($"<color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</color>");
                 }
 
                 // Connector arrow between abilities
@@ -2378,7 +2443,7 @@ namespace StartingClassMod
 
         private void RefreshTabHighlights()
         {
-            var tabs = new[] { _tabClasses, _tabSkills, _tabAbout };
+            var tabs = new[] { _tabClasses, _tabSkills, _tabArmor };
             for (int i = 0; i < tabs.Length; i++)
             {
                 if (tabs[i] == null) continue;
@@ -2491,6 +2556,14 @@ namespace StartingClassMod
         private void ConfirmSelection()
         {
             if (!_isVisible) return;
+
+            // Armor tab: route to armor upgrade instead
+            if (_activeTab == 2)
+            {
+                OnUpgradeArmorClicked();
+                return;
+            }
+
             if (_selectedIndex < 0 || _selectedIndex >= _classes.Count) return;
 
             var player = Player.m_localPlayer;
@@ -2523,47 +2596,290 @@ namespace StartingClassMod
             return null;
         }
 
-        private static string GetAboutText()
+        // ══════════════════════════════════════════
+        //  ARMOR TAB
+        // ══════════════════════════════════════════
+
+        /// <summary>
+        /// Restore list entries to class data after leaving the Armor tab.
+        /// </summary>
+        private void RestoreClassListEntries()
         {
-            return
-                "<size=24><color=#D4A24E>Starting Class Mod</color></size>\n\n" +
+            if (_classes == null) return;
+            for (int i = 0; i < _classElements.Count; i++)
+            {
+                if (i < _classes.Count)
+                {
+                    _classElements[i].SetActive(true);
+                    var cls = _classes[i];
 
-                "<size=20><color=#66B3E5>How It Works</color></size>\n" +
-                "When you first enter the world, you'll choose a starting class. " +
-                "Each class gives you a unique set of starting gear, skill bonuses, " +
-                "and a passive ability that shapes your early adventure.\n\n" +
+                    var nameTr = _classElements[i].transform.Find("name");
+                    var nameTxt = nameTr != null ? nameTr.GetComponent<TMP_Text>() : null;
+                    if (nameTxt != null)
+                    {
+                        nameTxt.text = cls.Name;
+                        nameTxt.color = Color.white;
+                    }
 
-                "<size=20><color=#66B3E5>Starting Gear</color></size>\n" +
-                "Your class determines the weapons, armour, and tools you begin with. " +
-                "These items are added to your inventory when you confirm your selection. " +
-                "Choosing a class that fits your playstyle means you can skip the initial " +
-                "resource grind and jump straight into exploring.\n\n" +
+                    var iconTr = _classElements[i].transform.Find("icon");
+                    if (iconTr != null)
+                    {
+                        var iconImg = iconTr.GetComponent<Image>();
+                        Sprite classIcon = GetClassIcon(cls);
+                        if (iconImg != null && classIcon != null)
+                        {
+                            iconImg.sprite = classIcon;
+                            iconImg.color = Color.white;
+                            iconImg.preserveAspect = true;
+                            iconTr.gameObject.SetActive(true);
+                        }
+                        else
+                        {
+                            iconTr.gameObject.SetActive(false);
+                        }
+                    }
+                }
+                else
+                {
+                    _classElements[i].SetActive(false);
+                }
+            }
+            RefreshHighlights();
+        }
 
-                "<size=20><color=#66B3E5>Skill Bonuses</color></size>\n" +
-                "Each class starts with <color=#8AE58A>bonus levels</color> in one or more skills. " +
-                "For example, an Archer begins with bonus levels in Bows, while a " +
-                "Miner starts with bonus levels in Pickaxes and Blocking. " +
-                "These bonuses give you a head start — skills continue to level up " +
-                "naturally through use, just like normal.\n\n" +
+        private void RefreshArmorPanel()
+        {
+            var player = Player.m_localPlayer;
+            string[] slots = ArmorUpgradeSystem.GetSlotNames();
+            int points = player != null ? SkillPointSystem.GetPoints(player) : 0;
+            bool fullSet = player != null && ArmorUpgradeSystem.IsFullSetEquipped(player);
 
-                "<size=20><color=#66B3E5>Passive Abilities</color></size>\n" +
-                "Every class has a <color=#D4A24E>passive ability</color> that is always active. " +
-                "These provide unique advantages: the Archer deals bonus damage at range, " +
-                "the Hunter marks wounded prey, and the Explorer moves faster. " +
-                "Passives require no activation and work automatically.\n\n" +
+            // Update list entries to show armor slots with equipped item names and icons
+            for (int i = 0; i < _classElements.Count; i++)
+            {
+                if (i < slots.Length)
+                {
+                    _classElements[i].SetActive(true);
+                    var item = player != null ? ArmorUpgradeSystem.GetEquippedItem(player, i) : null;
+                    int level = ArmorUpgradeSystem.GetUpgradeLevel(item);
 
-                "<size=20><color=#66B3E5>Locked Abilities</color></size>\n" +
-                "Each class also has <color=#999999>locked abilities</color> shown in grey. " +
-                "These represent advanced powers that unlock as you master your class skills. " +
-                "Keep training your core skills to eventually unlock them.\n\n" +
+                    // Update name text
+                    var nameTr = _classElements[i].transform.Find("name");
+                    var nameTxt = nameTr != null ? nameTr.GetComponent<TMP_Text>() : null;
+                    if (nameTxt != null)
+                    {
+                        if (item != null)
+                        {
+                            string itemName = Localization.instance.Localize(item.m_shared.m_name);
+                            string levelTag = level > 0
+                                ? $"  <size=16><color=#D4A24E>+{level}</color></size>"
+                                : "";
+                            nameTxt.text = $"{itemName}{levelTag}";
+                            nameTxt.color = Color.white;
+                        }
+                        else
+                        {
+                            nameTxt.text = $"{slots[i]} — Empty";
+                            nameTxt.color = new Color(0.4f, 0.4f, 0.4f);
+                        }
+                    }
 
-                "<size=20><color=#66B3E5>Reselecting Your Class</color></size>\n" +
-                "If you change your mind, open the console and type " +
-                "<color=#D4A24E>/OpenClassMenu</color> to reopen the selection screen. " +
-                "Use <color=#D4A24E>/OpenClassMenu reset</color> to clear your class data first. " +
-                "On re-selection your inventory will be replaced with the new class's starting gear.\n\n" +
+                    // Update icon to show equipped item's icon
+                    var iconTr = _classElements[i].transform.Find("icon");
+                    if (iconTr != null)
+                    {
+                        var iconImg = iconTr.GetComponent<Image>();
+                        if (iconImg != null)
+                        {
+                            if (item != null)
+                            {
+                                var icon = item.GetIcon();
+                                if (icon != null)
+                                {
+                                    iconImg.sprite = icon;
+                                    iconImg.color = Color.white;
+                                    iconImg.preserveAspect = true;
+                                    iconTr.gameObject.SetActive(true);
+                                }
+                                else
+                                {
+                                    iconTr.gameObject.SetActive(false);
+                                }
+                            }
+                            else
+                            {
+                                iconTr.gameObject.SetActive(false);
+                            }
+                        }
+                    }
 
-                "<size=16><color=#999999>Choose wisely, Viking. Odin watches.</color></size>";
+                    // Highlight selected slot
+                    var selTr = _classElements[i].transform.Find("selected");
+                    if (selTr != null)
+                        selTr.gameObject.SetActive(i == _armorSelectedSlot);
+                }
+                else
+                {
+                    _classElements[i].SetActive(false);
+                }
+            }
+
+            // ── Description panel: upgrade tree for the SELECTED armor piece ──
+            if (_recipeIcon != null)
+                _recipeIcon.enabled = false;
+
+            var selItem = (_armorSelectedSlot >= 0 && _armorSelectedSlot < slots.Length && player != null)
+                ? ArmorUpgradeSystem.GetEquippedItem(player, _armorSelectedSlot)
+                : null;
+            int currentLevel = ArmorUpgradeSystem.GetUpgradeLevel(selItem);
+
+            if (_recipeName != null)
+            {
+                if (selItem != null)
+                    _recipeName.text = Localization.instance.Localize(selItem.m_shared.m_name);
+                else if (_armorSelectedSlot >= 0 && _armorSelectedSlot < slots.Length)
+                    _recipeName.text = $"{slots[_armorSelectedSlot]} — Empty";
+                else
+                    _recipeName.text = "Armor";
+                _recipeName.enabled = true;
+            }
+
+            if (_recipeDescription != null)
+            {
+                var sb = new System.Text.StringBuilder();
+
+                if (selItem != null)
+                {
+                    string slotLabel = slots[_armorSelectedSlot];
+                    string itemName = Localization.instance.Localize(selItem.m_shared.m_name);
+
+                    // Calculate remaining cost for this piece
+                    int remainingCost = (ArmorUpgradeSystem.MaxLevel - currentLevel) * ArmorUpgradeSystem.CostPerLevel;
+
+                    // Header
+                    sb.AppendLine($"<align=center><size=26><color=#D4A24E>{itemName}</color></size></align>");
+                    sb.AppendLine($"<align=center><size=16><color=#AAAAAA>{slotLabel} Enhancement</color></size></align>");
+                    sb.AppendLine();
+                    if (fullSet)
+                        sb.AppendLine($"<align=center><size=17>Available: <color=#8AE58A>{points}</color>  \u2022  Remaining: <color=#D4A24E>{remainingCost}</color></size></align>");
+                    else
+                        sb.AppendLine($"<align=center><size=17>Available: <color=#8AE58A>{points}</color>  \u2022  <color=#FF6666>Need Full Set</color></size></align>");
+                    sb.AppendLine();
+
+                    // Named upgrade tiers with descriptions
+                    string[] tierNames = { "Reinforced", "Hardened", "Fortified", "Tempered", "Masterwork" };
+                    string[] tierDescs = {
+                        "Basic reinforcement strengthens the armor's structure.",
+                        "The armor is hardened through skilled craftsmanship.",
+                        "Fortified plating provides superior damage resistance.",
+                        "Tempering the material pushes it beyond normal limits.",
+                        "A masterwork of protection \u2014 the pinnacle of enhancement."
+                    };
+
+                    for (int lvl = 1; lvl <= ArmorUpgradeSystem.MaxLevel; lvl++)
+                    {
+                        string tierName = lvl <= tierNames.Length ? tierNames[lvl - 1] : $"Tier {lvl}";
+                        string tierDesc = lvl <= tierDescs.Length ? tierDescs[lvl - 1] : "";
+                        float tierBonus = lvl * ArmorUpgradeSystem.BonusPerLevel;
+                        bool isUnlocked = lvl <= currentLevel;
+                        bool isMax = (lvl == ArmorUpgradeSystem.MaxLevel);
+
+                        if (isUnlocked)
+                        {
+                            // ── Unlocked tier ──
+                            string accentColor = "#E5C56A";
+                            sb.AppendLine($"<color={accentColor}>━━━━━━━━━━━━━━━━━━━━</color>");
+                            sb.AppendLine($"<size=22><color={accentColor}>\u2605 {tierName}</color></size>");
+                            sb.AppendLine($"<size=14><color=#D4A24E>Enhancement</color> <color={accentColor}>\u2014 Unlocked</color></size>");
+                            sb.AppendLine();
+                            sb.AppendLine($"<size=16>{tierDesc}</size>");
+                            sb.AppendLine();
+                            sb.AppendLine($"<size=15><color=#8AE58A>+{tierBonus:F0} Armor Protection</color></size>");
+                        }
+                        else
+                        {
+                            // ── Locked tier ──
+                            string borderColor = isMax ? "#8B4513" : "#555555";
+                            string nameColor = isMax ? "#D4A24E" : "#BBBBBB";
+                            string descColor = isMax ? "#999999" : "#888888";
+                            string icon = isMax ? "\u25C6" : "\u25C8";
+
+                            sb.AppendLine($"<color={borderColor}>━━━━━━━━━━━━━━━━━━━━</color>");
+                            sb.AppendLine($"<size=22><color={nameColor}>{icon} {tierName}</color></size>");
+                            sb.AppendLine($"<size=14><color=#D4A24E>Enhancement</color> <color=#777777>\u2022 Tier {lvl} \u2022 {ArmorUpgradeSystem.CostPerLevel} pts</color></size>");
+                            sb.AppendLine();
+                            sb.AppendLine($"<size=16><color={descColor}>{tierDesc}</color></size>");
+                            sb.AppendLine();
+                            sb.AppendLine($"<size=15><color={descColor}>+{tierBonus:F0} Armor Protection</color></size>");
+                            sb.AppendLine();
+                            string haveColor = points >= ArmorUpgradeSystem.CostPerLevel ? "#8AE58A" : "#666666";
+                            sb.AppendLine($"<size=15><color=#D4A24E>\u25C6 {ArmorUpgradeSystem.CostPerLevel} Skill Points</color>  <color={haveColor}>(You have: {points})</color></size>");
+                        }
+
+                        // Connector between tiers
+                        if (lvl < ArmorUpgradeSystem.MaxLevel)
+                        {
+                            string arrowColor = lvl < currentLevel ? "#E5C56A" : "#555555";
+                            sb.AppendLine($"<align=center><size=20><color={arrowColor}>\u2502</color></size></align>");
+                            sb.AppendLine($"<align=center><size=20><color={arrowColor}>\u25BC</color></size></align>");
+                        }
+                    }
+                }
+                else
+                {
+                    // Empty slot
+                    string slotLabel = (_armorSelectedSlot >= 0 && _armorSelectedSlot < slots.Length)
+                        ? slots[_armorSelectedSlot] : "Armor";
+                    sb.AppendLine($"<align=center><size=26><color=#D4A24E>{slotLabel}</color></size></align>");
+                    sb.AppendLine($"<align=center><size=16><color=#AAAAAA>Enhancement</color></size></align>");
+                    sb.AppendLine();
+                    sb.AppendLine($"<align=center><size=17><color=#999999>Equip {slotLabel.ToLower()} armor to view enhancements</color></size></align>");
+                }
+
+                _recipeDescription.text = sb.ToString();
+                _recipeDescription.enabled = true;
+                _recipeDescription.ForceMeshUpdate();
+                LayoutRebuilder.ForceRebuildLayoutImmediate(_recipeDescription.rectTransform);
+            }
+
+            // Craft button — requires full set equipped to upgrade selected slot
+            if (_craftButton != null)
+            {
+                int selLevel = ArmorUpgradeSystem.GetUpgradeLevel(selItem);
+                bool selMaxed = selLevel >= ArmorUpgradeSystem.MaxLevel;
+                bool canAfford = points >= ArmorUpgradeSystem.CostPerLevel;
+
+                _craftButton.interactable = selItem != null && fullSet && !selMaxed && canAfford;
+                if (_craftButtonLabel != null)
+                {
+                    if (selItem == null)
+                        _craftButtonLabel.text = "No Armor";
+                    else if (!fullSet)
+                        _craftButtonLabel.text = "Need Full Set";
+                    else if (selMaxed)
+                        _craftButtonLabel.text = "Max Level";
+                    else if (!canAfford)
+                        _craftButtonLabel.text = $"Need {ArmorUpgradeSystem.CostPerLevel} pts";
+                    else
+                        _craftButtonLabel.text = $"Enhance ({ArmorUpgradeSystem.CostPerLevel} pts)";
+                }
+            }
+        }
+
+        private void OnUpgradeArmorClicked()
+        {
+            var player = Player.m_localPlayer;
+            if (player == null) return;
+
+            string[] slots = ArmorUpgradeSystem.GetSlotNames();
+            if (_armorSelectedSlot < 0 || _armorSelectedSlot >= slots.Length) return;
+
+            var item = ArmorUpgradeSystem.GetEquippedItem(player, _armorSelectedSlot);
+            if (ArmorUpgradeSystem.TryUpgrade(player, item))
+            {
+                player.m_skillLevelupEffects.Create(player.GetHeadPoint(), player.transform.rotation, player.transform);
+                RefreshArmorPanel();
+            }
         }
 
         // ══════════════════════════════════════════
