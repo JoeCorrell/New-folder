@@ -360,7 +360,8 @@ namespace StartingClassMod
                 else if (_activeTab == 2)
                 {
                     // Armor tab: upgrade selected armor slot
-                    OnUpgradeArmorClicked();
+                    if (_craftButton != null && _craftButton.interactable)
+                        OnUpgradeArmorClicked();
                 }
                 else
                 {
@@ -2776,11 +2777,13 @@ namespace StartingClassMod
                         "A masterwork of protection \u2014 the pinnacle of enhancement."
                     };
 
+                    float perLevel = ArmorUpgradeSystem.BonusPerLevel;
+                    float totalBonus = currentLevel * perLevel;
+
                     for (int lvl = 1; lvl <= ArmorUpgradeSystem.MaxLevel; lvl++)
                     {
                         string tierName = lvl <= tierNames.Length ? tierNames[lvl - 1] : $"Tier {lvl}";
                         string tierDesc = lvl <= tierDescs.Length ? tierDescs[lvl - 1] : "";
-                        float tierBonus = lvl * ArmorUpgradeSystem.BonusPerLevel;
                         bool isUnlocked = lvl <= currentLevel;
                         bool isMax = (lvl == ArmorUpgradeSystem.MaxLevel);
 
@@ -2794,7 +2797,7 @@ namespace StartingClassMod
                             sb.AppendLine();
                             sb.AppendLine($"<size=16>{tierDesc}</size>");
                             sb.AppendLine();
-                            sb.AppendLine($"<size=15><color=#8AE58A>+{tierBonus:F0} Armor Protection</color></size>");
+                            sb.AppendLine($"<size=15><color=#8AE58A>+{perLevel:F0} Armor Protection</color></size>");
                         }
                         else
                         {
@@ -2810,7 +2813,7 @@ namespace StartingClassMod
                             sb.AppendLine();
                             sb.AppendLine($"<size=16><color={descColor}>{tierDesc}</color></size>");
                             sb.AppendLine();
-                            sb.AppendLine($"<size=15><color={descColor}>+{tierBonus:F0} Armor Protection</color></size>");
+                            sb.AppendLine($"<size=15><color={descColor}>+{perLevel:F0} Armor Protection</color></size>");
                             sb.AppendLine();
                             string haveColor = points >= ArmorUpgradeSystem.CostPerLevel ? "#8AE58A" : "#666666";
                             sb.AppendLine($"<size=15><color=#D4A24E>\u25C6 {ArmorUpgradeSystem.CostPerLevel} Skill Points</color>  <color={haveColor}>(You have: {points})</color></size>");
@@ -2823,6 +2826,14 @@ namespace StartingClassMod
                             sb.AppendLine($"<align=center><size=20><color={arrowColor}>\u2502</color></size></align>");
                             sb.AppendLine($"<align=center><size=20><color={arrowColor}>\u25BC</color></size></align>");
                         }
+                    }
+
+                    // Total bonus summary at the bottom
+                    if (currentLevel > 0)
+                    {
+                        sb.AppendLine();
+                        sb.AppendLine($"<color=#E5C56A>━━━━━━━━━━━━━━━━━━━━</color>");
+                        sb.AppendLine($"<align=center><size=17><color=#8AE58A>Total: +{totalBonus:F0} Armor Protection</color></size></align>");
                     }
                 }
                 else
