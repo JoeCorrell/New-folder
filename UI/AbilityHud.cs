@@ -1,34 +1,20 @@
 using System.Collections.Generic;
-using TMPro;
+using HarmonyLib;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace StartingClassMod
 {
     /// <summary>
-    /// HUD elements displayed beside the forsaken power icon.
-    /// Shows one panel per unlocked active ability, each with its own icon,
-    /// name, and status text. Panels are positioned side by side.
+    /// Overrides the guardian power HUD to show the selected class ability
+    /// when one is active. Uses a Harmony postfix on Hud.UpdateGuardianPower
+    /// so our override runs AFTER vanilla sets the HUD, preventing flicker.
     /// </summary>
     public static class AbilityHud
     {
-        private class AbilityPanel
-        {
-            public GameObject Root;
-            public Image Icon;
-            public TMP_Text NameText;
-            public TMP_Text StatusText;
-        }
-
-        private static readonly List<AbilityPanel> _panels = new List<AbilityPanel>();
-        private static string _builtForClass;
-        private static int _builtAbilityCount;
-
-        // Cached sprites for each ability icon (loaded from embedded resources)
         private static readonly Dictionary<string, Sprite> _spriteCache = new Dictionary<string, Sprite>();
         private static Texture2D _placeholderTex;
 
-        // Class → icon/accent color
         private static readonly Dictionary<string, Color> ClassColors = new Dictionary<string, Color>
         {
             { "Archer",   new Color(0.53f, 0.78f, 0.35f) },
@@ -41,276 +27,132 @@ namespace StartingClassMod
             { "Miner",    new Color(0.60f, 0.60f, 0.65f) }
         };
 
-        /// <summary>Called every frame from plugin Update.</summary>
-        public static void UpdateHud(Player player)
+        // Vanilla cooldown tint color (matches Hud.s_colorRedBlueZeroAlpha)
+        private static readonly Color CooldownTint = new Color(1f, 0f, 1f, 0f);
+
+        /// <summary>
+        /// Called from Harmony postfix on Hud.UpdateGuardianPower.
+        /// Runs AFTER vanilla sets the GP HUD, so our override always wins.
+        /// </summary>
+        public static void OverrideGuardianPowerHud(Player player)
         {
-            if (player == null || Hud.instance == null)
-            {
-                HidePanels();
-                return;
-            }
+            if (player == null || Hud.instance == null) return;
+
+            string activePower = ActivePowerManager.GetActivePower(player);
+            if (activePower == ActivePowerManager.Forsaken) return;
 
             string className = ClassPersistence.GetSelectedClassName(player);
-            if (string.IsNullOrEmpty(className))
+            if (string.IsNullOrEmpty(className)) return;
+
+            var hud = Hud.instance;
+            if (hud.m_gpRoot == null) return;
+
+            // Ensure the GP HUD is visible (vanilla hides it when no forsaken power is set)
+            if (!hud.m_gpRoot.gameObject.activeSelf)
+                hud.m_gpRoot.gameObject.SetActive(true);
+
+            EnsureIconsLoaded(className);
+
+            // Override icon
+            if (hud.m_gpIcon != null)
             {
-                HidePanels();
-                return;
+                Sprite icon = GetAbilitySprite(activePower);
+                if (icon != null)
+                    hud.m_gpIcon.sprite = icon;
             }
 
-            if (!HasActiveAbility(player, className))
+            // Override name and cooldown/status
+            switch (activePower)
             {
-                HidePanels();
-                return;
+                case "MarkedByFate":
+                    UpdateMarkedByFateHud(player, hud);
+                    break;
+                case "BladeDance":
+                    UpdateBladeDanceHud(player, hud);
+                    break;
             }
+        }
 
-            // Rebuild if class changed or new abilities were unlocked
-            int activeCount = CountActiveAbilities(player, className);
-            if (_panels.Count > 0 && (_builtForClass != className || activeCount != _builtAbilityCount))
-                Destroy();
+        private static void UpdateMarkedByFateHud(Player player, Hud hud)
+        {
+            if (hud.m_gpName != null)
+                hud.m_gpName.text = "Marked by Fate";
 
-            // Lazy-create
-            if (_panels.Count == 0)
+            if (hud.m_gpCooldown != null)
             {
-                if (!CreateHud(player, className)) return;
+                if (MarkedByFate.IsActive(player))
+                {
+                    // Duration running — show time remaining and mark count
+                    float dur = MarkedByFate.GetDurationRemaining(player);
+                    int marks = MarkedByFate.GetActiveMarkCount();
+                    hud.m_gpCooldown.text = $"Active {StatusEffect.GetTimeString(dur)} ({marks})";
+                    if (hud.m_gpIcon != null)
+                        hud.m_gpIcon.color = Color.white;
+                }
+                else
+                {
+                    float cd = MarkedByFate.GetCooldownRemaining(player);
+                    if (cd > 0f)
+                    {
+                        hud.m_gpCooldown.text = StatusEffect.GetTimeString(cd);
+                        if (hud.m_gpIcon != null)
+                            hud.m_gpIcon.color = CooldownTint;
+                    }
+                    else
+                    {
+                        hud.m_gpCooldown.text = "Ready";
+                        if (hud.m_gpIcon != null)
+                            hud.m_gpIcon.color = Color.white;
+                    }
+                }
             }
+        }
 
-            // Update each panel
-            UpdatePanels(player, className);
+        private static void UpdateBladeDanceHud(Player player, Hud hud)
+        {
+            if (hud.m_gpName != null)
+                hud.m_gpName.text = "Blade Dance";
+
+            if (hud.m_gpCooldown != null)
+            {
+                if (BladeDance.IsActive())
+                {
+                    float remaining = BladeDance.GetTimeRemaining();
+                    hud.m_gpCooldown.text = $"Active {remaining:0}s";
+                    if (hud.m_gpIcon != null)
+                        hud.m_gpIcon.color = Color.white;
+                }
+                else
+                {
+                    float cd = BladeDance.GetCooldownRemaining(player);
+                    if (cd > 0f)
+                    {
+                        hud.m_gpCooldown.text = StatusEffect.GetTimeString(cd);
+                        if (hud.m_gpIcon != null)
+                            hud.m_gpIcon.color = CooldownTint;
+                    }
+                    else
+                    {
+                        hud.m_gpCooldown.text = "Ready";
+                        if (hud.m_gpIcon != null)
+                            hud.m_gpIcon.color = Color.white;
+                    }
+                }
+            }
         }
 
         /// <summary>Clean up when logging out.</summary>
         public static void Destroy()
         {
-            foreach (var panel in _panels)
-            {
-                if (panel.Root != null)
-                    Object.Destroy(panel.Root);
-            }
-            _panels.Clear();
             if (_placeholderTex != null)
                 Object.Destroy(_placeholderTex);
             _placeholderTex = null;
-            _builtForClass = null;
-            _builtAbilityCount = 0;
             _spriteCache.Clear();
         }
 
-        private static void HidePanels()
+        private static void EnsureIconsLoaded(string className)
         {
-            foreach (var panel in _panels)
-            {
-                if (panel.Root != null) panel.Root.SetActive(false);
-            }
-        }
-
-        private static void UpdatePanels(Player player, string className)
-        {
-            Color accent = GetClassColor(className);
-            string accentHex = ColorUtility.ToHtmlStringRGB(accent);
-
-            switch (className)
-            {
-                case "Assassin":
-                    UpdateAssassinPanels(player, accentHex);
-                    break;
-            }
-        }
-
-        private static void UpdateAssassinPanels(Player player, string accentHex)
-        {
-            int panelIdx = 0;
-            int selectedSlot = StartingClassPlugin.SelectedAbilitySlot;
-
-            // Marked by Fate panel
-            if (AbilityManager.IsAbilityUnlocked(player, "Assassin", 1) && panelIdx < _panels.Count)
-            {
-                var p = _panels[panelIdx];
-                bool isSelected = (panelIdx == selectedSlot);
-                p.Root.SetActive(isSelected);
-
-                if (isSelected)
-                {
-                    p.NameText.text = "Marked by Fate";
-                    if (p.Icon != null) p.Icon.color = Color.white;
-
-                    int charges = MarkedByFate.GetChargesRemaining();
-                    int active = MarkedByFate.GetActiveMarkCount();
-                    if (active > 0)
-                        p.StatusText.text = $"<color=#{accentHex}>{active} Marked</color> | {charges} Left";
-                    else if (charges >= 3)
-                        p.StatusText.text = $"<color=#{accentHex}>Ready</color>";
-                    else
-                        p.StatusText.text = $"<color=#{accentHex}>{charges} Charges</color>";
-                }
-
-                panelIdx++;
-            }
-
-            // Blade Dance panel
-            if (AbilityManager.IsAbilityUnlocked(player, "Assassin", 5) && panelIdx < _panels.Count)
-            {
-                var p = _panels[panelIdx];
-                bool isSelected = (panelIdx == selectedSlot);
-                p.Root.SetActive(isSelected);
-
-                if (isSelected)
-                {
-                    p.NameText.text = "Blade Dance";
-                    if (p.Icon != null) p.Icon.color = Color.white;
-
-                    if (BladeDance.IsActive())
-                    {
-                        float remaining = BladeDance.GetTimeRemaining();
-                        p.StatusText.text = $"<color=#{accentHex}>Active {remaining:0}s</color>";
-                    }
-                    else
-                    {
-                        float cd = BladeDance.GetCooldownRemaining(player);
-                        if (cd > 0f)
-                        {
-                            int mins = (int)(cd / 60f);
-                            int secs = (int)(cd % 60f);
-                            p.StatusText.text = $"<color=#999999>{mins}:{secs:D2}</color>";
-                        }
-                        else
-                        {
-                            p.StatusText.text = $"<color=#{accentHex}>Ready</color>";
-                        }
-                    }
-                }
-
-                panelIdx++;
-            }
-
-            // Hide unused panels
-            for (int i = panelIdx; i < _panels.Count; i++)
-            {
-                if (_panels[i].Root != null) _panels[i].Root.SetActive(false);
-            }
-        }
-
-        private static bool HasActiveAbility(Player player, string className)
-        {
-            return CountActiveAbilities(player, className) > 0;
-        }
-
-        private static int CountActiveAbilities(Player player, string className)
-        {
-            int count = 0;
-            switch (className)
-            {
-                case "Assassin":
-                    if (AbilityManager.IsAbilityUnlocked(player, "Assassin", 1)) count++;
-                    if (AbilityManager.IsAbilityUnlocked(player, "Assassin", 5)) count++;
-                    break;
-            }
-            return count;
-        }
-
-        private static Color GetClassColor(string className)
-        {
-            if (ClassColors.TryGetValue(className, out Color c))
-                return c;
-            return new Color(0.83f, 0.64f, 0.31f);
-        }
-
-        private static bool CreateHud(Player player, string className)
-        {
-            var hud = Hud.instance;
-            if (hud == null || hud.m_gpRoot == null) return false;
-
-            PreloadAbilityIcons(className);
-
-            // Determine which abilities are unlocked to know how many panels to create
-            var abilityKeys = new List<string>();
-            switch (className)
-            {
-                case "Assassin":
-                    if (AbilityManager.IsAbilityUnlocked(player, "Assassin", 1))
-                        abilityKeys.Add("MarkedByFate");
-                    if (AbilityManager.IsAbilityUnlocked(player, "Assassin", 5))
-                        abilityKeys.Add("BladeDance");
-                    break;
-            }
-
-            if (abilityKeys.Count == 0) return false;
-
-            var gpRt = hud.m_gpRoot;
-            float panelWidth = gpRt.sizeDelta.x;
-
-            for (int i = 0; i < abilityKeys.Count; i++)
-            {
-                var go = Object.Instantiate(gpRt.gameObject, gpRt.parent);
-                go.name = $"ClassAbilityHud_{abilityKeys[i]}";
-
-                var rt = go.GetComponent<RectTransform>();
-                rt.anchorMin = gpRt.anchorMin;
-                rt.anchorMax = gpRt.anchorMax;
-                rt.pivot = gpRt.pivot;
-                // All panels at same position — only one is visible at a time (ALT to switch)
-                rt.anchoredPosition = gpRt.anchoredPosition + new Vector2(panelWidth + 10f, 0f);
-                rt.sizeDelta = gpRt.sizeDelta;
-
-                var icon = FindChild<Image>(go, "Icon");
-                var nameText = FindChild<TMP_Text>(go, "Name");
-                var statusText = FindChild<TMP_Text>(go, "TimeText");
-
-                // Fallback: find by component order
-                if (icon == null || nameText == null || statusText == null)
-                {
-                    var images = go.GetComponentsInChildren<Image>(true);
-                    var texts = go.GetComponentsInChildren<TMP_Text>(true);
-                    if (icon == null && images.Length >= 2) icon = images[1];
-                    if (texts.Length >= 2)
-                    {
-                        if (nameText == null) nameText = texts[0];
-                        if (statusText == null) statusText = texts[texts.Length - 1];
-                    }
-                }
-
-                if (icon == null || nameText == null || statusText == null)
-                {
-                    StartingClassPlugin.LogWarning($"AbilityHud: Could not find child components for panel {i}.");
-                    Object.Destroy(go);
-                    continue;
-                }
-
-                nameText.richText = true;
-                statusText.richText = true;
-
-                icon.type = Image.Type.Simple;
-                icon.preserveAspect = true;
-
-                var iconRt = icon.GetComponent<RectTransform>();
-                if (iconRt != null)
-                    iconRt.localScale = new Vector3(1.5f, 1.5f, 1f);
-
-                // Set icon sprite
-                if (_spriteCache.TryGetValue(abilityKeys[i], out Sprite sprite))
-                    icon.sprite = sprite;
-                else if (_spriteCache.TryGetValue("_fallback", out Sprite fallback))
-                    icon.sprite = fallback;
-
-                icon.color = Color.white;
-                go.SetActive(true);
-
-                _panels.Add(new AbilityPanel
-                {
-                    Root = go,
-                    Icon = icon,
-                    NameText = nameText,
-                    StatusText = statusText
-                });
-            }
-
-            _builtForClass = className;
-            _builtAbilityCount = _panels.Count;
-            return _panels.Count > 0;
-        }
-
-        private static void PreloadAbilityIcons(string className)
-        {
-            _spriteCache.Clear();
+            if (_spriteCache.Count > 0) return;
 
             string[] iconNames;
             switch (className)
@@ -348,17 +190,33 @@ namespace StartingClassMod
             }
         }
 
-        private static T FindChild<T>(GameObject parent, string childName) where T : Component
+        private static Sprite GetAbilitySprite(string abilityId)
         {
-            var t = parent.transform.Find(childName);
-            if (t != null) return t.GetComponent<T>();
-
-            foreach (Transform child in parent.transform)
-            {
-                if (child.name.IndexOf(childName, System.StringComparison.OrdinalIgnoreCase) >= 0)
-                    return child.GetComponent<T>();
-            }
+            if (_spriteCache.TryGetValue(abilityId, out Sprite s))
+                return s;
+            if (_spriteCache.TryGetValue("_fallback", out Sprite fb))
+                return fb;
             return null;
+        }
+
+        private static Color GetClassColor(string className)
+        {
+            if (ClassColors.TryGetValue(className, out Color c))
+                return c;
+            return new Color(0.83f, 0.64f, 0.31f);
+        }
+    }
+
+    /// <summary>
+    /// Harmony postfix on Hud.UpdateGuardianPower to override the GP HUD
+    /// after vanilla has set its values. This prevents race conditions.
+    /// </summary>
+    [HarmonyPatch(typeof(Hud), "UpdateGuardianPower")]
+    public static class Hud_UpdateGuardianPower_Patch
+    {
+        static void Postfix(Player player)
+        {
+            AbilityHud.OverrideGuardianPowerHud(player);
         }
     }
 }

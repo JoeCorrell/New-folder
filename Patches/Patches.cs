@@ -180,14 +180,14 @@ namespace StartingClassMod
                 }
                 MarkedByFate.ClearAllMarks();
                 BladeDance.Reset();
+                ActivePowerManager.SetActivePower(player, ActivePowerManager.Forsaken);
 
                 terminal.AddString($"StartingClass: Reset all abilities for {className}. Refunded {refunded} skill points.");
             }
         }
 
         /// <summary>
-        /// Patch Game.Logout to close the class selection UI if open during logout.
-        /// Prevents lingering UI or state corruption.
+        /// Patch Game.Logout to clean up all mod state: close UI, clear marks, reset abilities.
         /// </summary>
         [HarmonyPatch(typeof(Game), nameof(Game.Logout))]
         public static class Game_Logout_Patch
@@ -195,6 +195,9 @@ namespace StartingClassMod
             static void Prefix()
             {
                 StartingClassPlugin.Instance?.HideClassSelection();
+                MarkedByFate.ClearAllMarks();
+                BladeDance.Reset();
+                AbilityHud.Destroy();
             }
         }
 
@@ -212,14 +215,6 @@ namespace StartingClassMod
 
                 // Block input when class menu is open
                 if (StartingClassPlugin.Instance != null && StartingClassPlugin.Instance.IsClassMenuOpen)
-                {
-                    __result = false;
-                    return false;
-                }
-
-                // Block input for the frame a controller combo (RB+X/Y) was consumed,
-                // so the game doesn't also process the X/Y press as attack/interact.
-                if (StartingClassPlugin.ComboConsumedFrame == UnityEngine.Time.frameCount)
                 {
                     __result = false;
                     return false;
@@ -297,16 +292,106 @@ namespace StartingClassMod
         }
 
         /// <summary>
-        /// Clean up marked enemies and ability HUD when logging out.
+        /// Intercept guardian power activation. When a class ability is selected
+        /// as the active power, run that ability instead of the forsaken power.
         /// </summary>
-        [HarmonyPatch(typeof(Game), nameof(Game.Logout))]
-        public static class Game_Logout_MarkedByFate_Patch
+        [HarmonyPatch(typeof(Player), "StartGuardianPower")]
+        public static class Player_StartGuardianPower_Patch
         {
-            static void Prefix()
+            private static readonly MethodInfo HaveQueuedChainMethod =
+                AccessTools.Method(typeof(Player), "HaveQueuedChain");
+
+            static bool Prefix(Player __instance, ref bool __result)
             {
-                MarkedByFate.ClearAllMarks();
-                BladeDance.Reset();
-                AbilityHud.Destroy();
+                if (__instance != Player.m_localPlayer) return true;
+
+                string activePower = ActivePowerManager.GetActivePower(__instance);
+                if (activePower == ActivePowerManager.Forsaken)
+                    return true; // Let normal guardian power run
+
+                // Block if player can't act (same checks as vanilla StartGuardianPower)
+                bool inAttack = __instance.InAttack();
+                bool haveQueued = HaveQueuedChainMethod != null && (bool)HaveQueuedChainMethod.Invoke(__instance, null);
+                if ((inAttack && !haveQueued) || __instance.InDodge() || !__instance.CanMove() ||
+                    __instance.IsKnockedBack() || __instance.IsStaggering() || __instance.InMinorAction())
+                {
+                    __result = false;
+                    return false;
+                }
+
+                // Route to the selected class ability
+                switch (activePower)
+                {
+                    case "MarkedByFate":
+                        MarkedByFate.TryActivate(__instance);
+                        break;
+                    case "BladeDance":
+                        BladeDance.TryActivate(__instance);
+                        break;
+                }
+
+                __result = true;
+                return false; // Skip the real guardian power
+            }
+        }
+
+        /// <summary>
+        /// Block ActivateGuardianPower (called by animation event) when a class
+        /// ability is the active power. This prevents the forsaken power effect
+        /// from applying when our abilities trigger the gpower animation.
+        /// </summary>
+        [HarmonyPatch(typeof(Player), "ActivateGuardianPower")]
+        public static class Player_ActivateGuardianPower_Patch
+        {
+            static bool Prefix(Player __instance, ref bool __result)
+            {
+                if (__instance != Player.m_localPlayer) return true;
+
+                if (ActivePowerManager.IsClassAbilityActive(__instance))
+                {
+                    __result = false;
+                    return false; // Block the real guardian power effect
+                }
+
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Suppress game actions tied to the X face button so vanilla doesn't
+        /// process them while our class menu is open or when RB is held.
+        /// Only JoySit, JoyUse, and JoyButtonX are suppressed — all other
+        /// ZInput calls (navigation, bumpers, sticks) remain functional.
+        /// </summary>
+        [HarmonyPatch(typeof(ZInput), nameof(ZInput.GetButtonDown))]
+        public static class ZInput_GetButtonDown_Patch
+        {
+            private static readonly System.Collections.Generic.HashSet<string> SuppressXActions =
+                new System.Collections.Generic.HashSet<string>
+                {
+                    "JoySit", "JoyUse", "JoyButtonX"
+                };
+
+            static bool Prefix(string name, ref bool __result)
+            {
+                if (!SuppressXActions.Contains(name)) return true;
+
+                // Always suppress X-button game actions when our menu is open
+                if (StartingClassPlugin.Instance != null &&
+                    StartingClassPlugin.Instance.IsClassMenuOpen)
+                {
+                    __result = false;
+                    return false;
+                }
+
+                // Suppress when RB is held (for RB+X menu toggle combo)
+                if (ZInput.GetButton("JoyTabRight"))
+                {
+                    __result = false;
+                    return false;
+                }
+
+                return true;
             }
         }
     }

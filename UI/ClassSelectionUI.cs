@@ -58,6 +58,19 @@ namespace StartingClassMod
         private Button _unlockButton;
         private TMP_Text _unlockButtonLabel;
 
+        // ── Active Power panel (right side of Skills tab) ──
+        private GameObject _activePowerPanel;
+        private RectTransform _powerListRoot;
+        private ScrollRect _powerScrollRect;
+        private Button _selectPowerButton;
+        private TMP_Text _selectPowerLabel;
+        private int _selectedPowerIndex = -1;
+        private readonly List<GameObject> _powerEntries = new List<GameObject>();
+        private readonly List<string> _powerIds = new List<string>();
+
+        // ── Panel focus for gamepad (Skills tab: 0=left class list, 1=middle skill text, 2=right powers) ──
+        private int _panelFocus; // 0 = left, 1 = middle, 2 = right
+
         // ── Class list elements (instantiated from recipe element prefab) ──
         private readonly List<GameObject> _classElements = new List<GameObject>();
 
@@ -199,45 +212,143 @@ namespace StartingClassMod
         {
             if (_classes == null || _classes.Count == 0) return;
 
-            // Navigate class list with D-pad / left stick (matches UpdateRecipeGamepadInput)
-            if (ZInput.GetButtonDown("JoyLStickDown") || ZInput.GetButtonDown("JoyDPadDown"))
-            {
-                int next = (_selectedIndex < 0) ? 0 : Mathf.Min(_classes.Count - 1, _selectedIndex + 1);
-                SelectClass(next);
-                EnsureClassVisible(next);
-                if (EventSystem.current != null)
-                    EventSystem.current.SetSelectedGameObject(null);
-            }
-            if (ZInput.GetButtonDown("JoyLStickUp") || ZInput.GetButtonDown("JoyDPadUp"))
-            {
-                int prev = (_selectedIndex < 0) ? 0 : Mathf.Max(0, _selectedIndex - 1);
-                SelectClass(prev);
-                EnsureClassVisible(prev);
-                if (EventSystem.current != null)
-                    EventSystem.current.SetSelectedGameObject(null);
-            }
+            // ── LB / RB — switch tabs ──
+            if (ZInput.GetButtonDown("JoyTabLeft"))
+                SwitchTab(_activeTab - 1);
+            if (ZInput.GetButtonDown("JoyTabRight"))
+                SwitchTab(_activeTab + 1);
 
-            // Confirm selection with A button
-            if (ZInput.GetButtonDown("JoyButtonA"))
-            {
-                if (_selectedIndex >= 0 && _selectedIndex < _classes.Count)
-                    ConfirmSelection();
-            }
-
-            // Close with B button (command-based or escape equivalent)
+            // ── B button — close menu ──
             if (ZInput.GetButtonDown("JoyButtonB"))
             {
                 if (_isFromCommand)
                     Close();
             }
 
-            // LB / RB to switch tabs
-            if (ZInput.GetButtonDown("JoyTabLeft"))
-                SwitchTab(_activeTab - 1);
-            if (ZInput.GetButtonDown("JoyTabRight"))
-                SwitchTab(_activeTab + 1);
+            // ── Skills tab: left stick LEFT/RIGHT cycles panel focus (0=class list, 1=skills text, 2=powers) ──
+            if (_activeTab == 1)
+            {
+                if (ZInput.GetButtonDown("JoyLStickLeft") || ZInput.GetButtonDown("JoyDPadLeft"))
+                {
+                    if (_panelFocus > 0)
+                    {
+                        _panelFocus--;
+                        if (_panelFocus == 2 && _selectedPowerIndex < 0 && _powerEntries.Count > 0)
+                        {
+                            _selectedPowerIndex = 0;
+                            UpdatePowerSelection();
+                        }
+                        if (EventSystem.current != null)
+                            EventSystem.current.SetSelectedGameObject(null);
+                    }
+                }
+                if (ZInput.GetButtonDown("JoyLStickRight") || ZInput.GetButtonDown("JoyDPadRight"))
+                {
+                    int maxFocus = (_powerEntries.Count > 0) ? 2 : 1;
+                    if (_panelFocus < maxFocus)
+                    {
+                        _panelFocus++;
+                        if (_panelFocus == 2 && _selectedPowerIndex < 0 && _powerEntries.Count > 0)
+                        {
+                            _selectedPowerIndex = 0;
+                            UpdatePowerSelection();
+                        }
+                        if (EventSystem.current != null)
+                            EventSystem.current.SetSelectedGameObject(null);
+                    }
+                }
+            }
 
-            // Right stick scrolls the active text panel (description / skills / about)
+            // ── Left stick / D-pad UP/DOWN — navigate based on panel focus ──
+            if (ZInput.GetButtonDown("JoyLStickDown") || ZInput.GetButtonDown("JoyDPadDown"))
+            {
+                if (_activeTab == 1 && _panelFocus == 2)
+                {
+                    // Right panel: navigate power entries
+                    if (_powerEntries.Count > 0)
+                    {
+                        _selectedPowerIndex = Mathf.Min(_powerEntries.Count - 1, _selectedPowerIndex + 1);
+                        UpdatePowerSelection();
+                    }
+                }
+                else if (_activeTab == 1 && _panelFocus == 1)
+                {
+                    // Middle panel: scroll skills text down
+                    if (_skillsScrollRect != null)
+                    {
+                        _skillsScrollRect.verticalNormalizedPosition -= 0.1f;
+                        _skillsScrollRect.verticalNormalizedPosition = Mathf.Clamp01(_skillsScrollRect.verticalNormalizedPosition);
+                    }
+                }
+                else
+                {
+                    // Left panel: navigate class list
+                    int next = (_selectedIndex < 0) ? 0 : Mathf.Min(_classes.Count - 1, _selectedIndex + 1);
+                    SelectClass(next);
+                    EnsureClassVisible(next);
+                }
+                if (EventSystem.current != null)
+                    EventSystem.current.SetSelectedGameObject(null);
+            }
+            if (ZInput.GetButtonDown("JoyLStickUp") || ZInput.GetButtonDown("JoyDPadUp"))
+            {
+                if (_activeTab == 1 && _panelFocus == 2)
+                {
+                    // Right panel: navigate power entries
+                    if (_powerEntries.Count > 0)
+                    {
+                        _selectedPowerIndex = Mathf.Max(0, _selectedPowerIndex - 1);
+                        UpdatePowerSelection();
+                    }
+                }
+                else if (_activeTab == 1 && _panelFocus == 1)
+                {
+                    // Middle panel: scroll skills text up
+                    if (_skillsScrollRect != null)
+                    {
+                        _skillsScrollRect.verticalNormalizedPosition += 0.1f;
+                        _skillsScrollRect.verticalNormalizedPosition = Mathf.Clamp01(_skillsScrollRect.verticalNormalizedPosition);
+                    }
+                }
+                else
+                {
+                    // Left panel: navigate class list
+                    int prev = (_selectedIndex < 0) ? 0 : Mathf.Max(0, _selectedIndex - 1);
+                    SelectClass(prev);
+                    EnsureClassVisible(prev);
+                }
+                if (EventSystem.current != null)
+                    EventSystem.current.SetSelectedGameObject(null);
+            }
+
+            // ── A button — context-dependent per tab and panel focus ──
+            if (ZInput.GetButtonDown("JoyButtonA"))
+            {
+                if (_activeTab == 1)
+                {
+                    if (_panelFocus == 2)
+                    {
+                        // Right panel: select the highlighted power
+                        if (_selectPowerButton != null && _selectPowerButton.interactable)
+                            OnSelectPowerClicked();
+                    }
+                    else if (_panelFocus == 0)
+                    {
+                        // Left panel: unlock ability
+                        if (_unlockButton != null && _unlockButton.interactable)
+                            OnUnlockButtonClicked();
+                    }
+                    // Middle panel (focus 1): A does nothing (just scrollable text)
+                }
+                else
+                {
+                    // Classes/About tab: confirm class selection
+                    if (_selectedIndex >= 0 && _selectedIndex < _classes.Count)
+                        ConfirmSelection();
+                }
+            }
+
+            // ── Right stick — scroll the middle panel text (always available as secondary scroll) ──
             ScrollRect activeScroll = null;
             if (_activeTab == 0 && _descriptionScrollRect != null)
                 activeScroll = _descriptionScrollRect;
@@ -383,11 +494,13 @@ namespace StartingClassMod
                 }
             }
 
-            // Widen panel to fit a third column (preview) equal to description width.
+            // Widen panel to fit a third column (preview) equal to description width,
+            // plus extra width assigned to the middle (description) column.
+            float extraWidth = 80f; // extra pixels for the middle panel
             float previewColumnWidth = descriptionColumnWidth;
             float previewPadding = 24f;
             float contentBaseWidth = origPanelWidth + listWidthIncrease;
-            float panelAddedWidth = listWidthIncrease + previewColumnWidth + previewPadding;
+            float panelAddedWidth = listWidthIncrease + previewColumnWidth + previewPadding + extraWidth;
             float tabHeight = 2f;
             panelRT.sizeDelta = new Vector2(origPanelWidth + panelAddedWidth, panelRT.sizeDelta.y + tabHeight);
             panelRT.anchoredPosition = Vector2.zero;
@@ -412,6 +525,13 @@ namespace StartingClassMod
                 }
             }
 
+            // Give the extra width to the Description (middle) panel so it's bigger
+            if (clonedDescPanel != null)
+            {
+                clonedDescPanel.offsetMax += new Vector2(extraWidth, 0f);
+                // Also shift the preview column right to make room
+                contentBaseWidth += extraWidth;
+            }
 
             // ══════════════════════════════════════════
             //  Find cloned element references via path matching
@@ -498,23 +618,24 @@ namespace StartingClassMod
 
             // All scrollbars in the clone (recipe list + description) are wanted — no hiding needed.
 
-            // Force the left class-list panel to match the description panel width.
+            // Force the left class-list panel to match the original (pre-extra) description width.
             var listPanelRT = _clonedPanel.transform.Find("RecipeList") as RectTransform;
             var descPanelRT = _clonedPanel.transform.Find("Decription") as RectTransform;
             if (listPanelRT != null && descPanelRT != null)
             {
                 float parentWidth = panelRT.sizeDelta.x;
-                float descWidth = GetRectWidth(descPanelRT, parentWidth);
                 float descLeft = GetRectLeft(descPanelRT, parentWidth);
                 float gapToDescription = 4f;
 
+                // Use the original column width, not the widened description
+                float listWidth = descriptionColumnWidth;
                 float targetRight = descLeft - gapToDescription;
-                float targetLeft = targetRight - descWidth;
+                float targetLeft = targetRight - listWidth;
                 float minLeft = 6f;
                 if (targetLeft < minLeft)
                 {
                     targetLeft = minLeft;
-                    targetRight = targetLeft + descWidth;
+                    targetRight = targetLeft + listWidth;
                 }
 
                 SetRectHorizontalEdges(listPanelRT, parentWidth, targetLeft, targetRight);
@@ -948,28 +1069,25 @@ namespace StartingClassMod
             }
 
             // ══════════════════════════════════════════
-            //  Skills panel — spans description + preview columns (class list stays visible)
+            //  Skills panel — occupies the Description column only (skill tree text + unlock button)
             // ══════════════════════════════════════════
             {
-                var skillsListPanel = _clonedPanel.transform.Find("RecipeList") as RectTransform;
-                var skillsPreviewPanel = _clonedPanel.transform.Find("PreviewContainer") as RectTransform;
                 var skillsDescPanel = _clonedPanel.transform.Find("Decription") as RectTransform;
                 Image skillsDescImg = skillsDescPanel != null ? skillsDescPanel.GetComponent<Image>() : null;
 
-                if (skillsDescPanel != null && skillsPreviewPanel != null)
+                if (skillsDescPanel != null)
                 {
                     float pw3 = panelRT.sizeDelta.x;
-                    float leftEdge = GetRectLeft(skillsDescPanel, pw3);
-                    float rightEdge = GetRectRight(skillsPreviewPanel, pw3);
 
                     _skillsPanel = new GameObject("SkillsPanel", typeof(RectTransform), typeof(Image));
                     _skillsPanel.transform.SetParent(_clonedPanel.transform, false);
                     var skillsRT = _skillsPanel.GetComponent<RectTransform>();
+                    // Match Description panel position exactly
                     skillsRT.anchorMin = skillsDescPanel.anchorMin;
-                    skillsRT.anchorMax = new Vector2(skillsPreviewPanel.anchorMax.x, skillsDescPanel.anchorMax.y);
-                    skillsRT.pivot = new Vector2(0.5f, 0.5f);
-                    skillsRT.offsetMin = new Vector2(leftEdge - skillsRT.anchorMin.x * pw3, skillsDescPanel.offsetMin.y);
-                    skillsRT.offsetMax = new Vector2(rightEdge - skillsRT.anchorMax.x * pw3, skillsDescPanel.offsetMax.y);
+                    skillsRT.anchorMax = skillsDescPanel.anchorMax;
+                    skillsRT.pivot = skillsDescPanel.pivot;
+                    skillsRT.offsetMin = skillsDescPanel.offsetMin;
+                    skillsRT.offsetMax = skillsDescPanel.offsetMax;
 
                     var skillsBg = _skillsPanel.GetComponent<Image>();
                     if (skillsDescImg != null && skillsDescImg.sprite != null)
@@ -1094,21 +1212,161 @@ namespace StartingClassMod
                         }
                         StripButtonHints(unlockGO, _unlockButtonLabel);
 
-                        // Position at the bottom of the skills panel, full width with padding
                         var unlockRT = unlockGO.GetComponent<RectTransform>();
                         var craftBtnRT = _craftButton.GetComponent<RectTransform>();
                         float btnH = craftBtnRT != null ? craftBtnRT.rect.height : 30f;
                         unlockRT.anchorMin = new Vector2(0f, 0f);
                         unlockRT.anchorMax = new Vector2(1f, 0f);
                         unlockRT.pivot = new Vector2(0.5f, 0f);
-                        unlockRT.sizeDelta = new Vector2(-24f, btnH); // 12px padding each side
+                        unlockRT.sizeDelta = new Vector2(-24f, btnH);
                         unlockRT.anchoredPosition = new Vector2(0f, 8f);
 
-                        // Raise scroll area bottom to clear the button
                         skillsScrollRT.offsetMin = new Vector2(12f, btnH + 16f);
                     }
 
                     _skillsPanel.SetActive(false);
+                }
+            }
+
+            // ══════════════════════════════════════════
+            //  Abilities panel — occupies the Preview column on the Skills tab
+            //  Built identically to the class list (RecipeList clone structure)
+            // ══════════════════════════════════════════
+            {
+                var abilitiesPreviewPanel = _clonedPanel.transform.Find("PreviewContainer") as RectTransform;
+                var abilitiesDescPanel = _clonedPanel.transform.Find("Decription") as RectTransform;
+                Image abilitiesDescImg = abilitiesDescPanel != null ? abilitiesDescPanel.GetComponent<Image>() : null;
+
+                if (abilitiesPreviewPanel != null)
+                {
+                    _activePowerPanel = new GameObject("AbilitiesPanel", typeof(RectTransform), typeof(Image));
+                    _activePowerPanel.transform.SetParent(_clonedPanel.transform, false);
+                    var apRT = _activePowerPanel.GetComponent<RectTransform>();
+                    // Match Preview column position exactly
+                    apRT.anchorMin = abilitiesPreviewPanel.anchorMin;
+                    apRT.anchorMax = abilitiesPreviewPanel.anchorMax;
+                    apRT.pivot = abilitiesPreviewPanel.pivot;
+                    apRT.offsetMin = abilitiesPreviewPanel.offsetMin;
+                    apRT.offsetMax = abilitiesPreviewPanel.offsetMax;
+
+                    var apBg = _activePowerPanel.GetComponent<Image>();
+                    if (abilitiesDescImg != null && abilitiesDescImg.sprite != null)
+                    {
+                        apBg.sprite = abilitiesDescImg.sprite;
+                        apBg.type = abilitiesDescImg.type;
+                        apBg.color = abilitiesDescImg.color;
+                    }
+                    else
+                    {
+                        apBg.color = new Color(0f, 0f, 0f, 0.45f);
+                    }
+
+                    // ── Scrollable list area (identical to RecipeList internal structure) ──
+                    float apSBWidth = 10f;
+
+                    var apScrollGO = new GameObject("AbilitiesScrollArea", typeof(RectTransform), typeof(Image), typeof(Mask));
+                    apScrollGO.transform.SetParent(_activePowerPanel.transform, false);
+                    var apScrollRT = apScrollGO.GetComponent<RectTransform>();
+                    apScrollRT.anchorMin = Vector2.zero;
+                    apScrollRT.anchorMax = Vector2.one;
+                    apScrollRT.offsetMin = new Vector2(2f, 0f);
+                    apScrollRT.offsetMax = new Vector2(-apSBWidth - 2f, 0f);
+                    apScrollGO.GetComponent<Image>().color = new Color(0, 0, 0, 0.01f);
+                    apScrollGO.GetComponent<Mask>().showMaskGraphic = false;
+
+                    var apContentGO = new GameObject("Content", typeof(RectTransform));
+                    apContentGO.transform.SetParent(apScrollGO.transform, false);
+                    _powerListRoot = apContentGO.GetComponent<RectTransform>();
+                    _powerListRoot.anchorMin = new Vector2(0f, 1f);
+                    _powerListRoot.anchorMax = new Vector2(1f, 1f);
+                    _powerListRoot.pivot = new Vector2(0.5f, 1f);
+                    _powerListRoot.anchoredPosition = Vector2.zero;
+                    _powerListRoot.sizeDelta = Vector2.zero;
+
+                    // ScrollRect
+                    var apSR = apScrollGO.AddComponent<ScrollRect>();
+                    apSR.content = _powerListRoot;
+                    apSR.viewport = apScrollRT;
+                    apSR.vertical = true;
+                    apSR.horizontal = false;
+                    apSR.movementType = ScrollRect.MovementType.Clamped;
+                    apSR.scrollSensitivity = _listScrollRect != null ? _listScrollRect.scrollSensitivity : 40f;
+                    _powerScrollRect = apSR;
+
+                    // Scrollbar (identical to class list)
+                    var apSBGO = new GameObject("AbilitiesScrollbar", typeof(RectTransform));
+                    apSBGO.transform.SetParent(_activePowerPanel.transform, false);
+                    var apSBRT = apSBGO.GetComponent<RectTransform>();
+                    apSBRT.anchorMin = new Vector2(1f, 0f);
+                    apSBRT.anchorMax = new Vector2(1f, 1f);
+                    apSBRT.pivot = new Vector2(1f, 0.5f);
+                    apSBRT.sizeDelta = new Vector2(apSBWidth, 0f);
+                    apSBRT.offsetMin = new Vector2(-apSBWidth, 4f);
+                    apSBRT.offsetMax = new Vector2(-2f, -4f);
+
+                    var apTrack = apSBGO.AddComponent<Image>();
+                    apTrack.color = new Color(0f, 0f, 0f, 0.3f);
+
+                    var apSliding = new GameObject("Sliding Area", typeof(RectTransform));
+                    apSliding.transform.SetParent(apSBGO.transform, false);
+                    var apSlidingRT = apSliding.GetComponent<RectTransform>();
+                    apSlidingRT.anchorMin = Vector2.zero;
+                    apSlidingRT.anchorMax = Vector2.one;
+                    apSlidingRT.offsetMin = Vector2.zero;
+                    apSlidingRT.offsetMax = Vector2.zero;
+
+                    var apHandle = new GameObject("Handle", typeof(RectTransform), typeof(Image));
+                    apHandle.transform.SetParent(apSliding.transform, false);
+                    var apHandleRT = apHandle.GetComponent<RectTransform>();
+                    apHandleRT.anchorMin = Vector2.zero;
+                    apHandleRT.anchorMax = Vector2.one;
+                    apHandleRT.offsetMin = Vector2.zero;
+                    apHandleRT.offsetMax = Vector2.zero;
+                    var apHandleImg = apHandle.GetComponent<Image>();
+                    apHandleImg.color = new Color(0.83f, 0.64f, 0.31f, 0.9f);
+
+                    var apSB = apSBGO.AddComponent<Scrollbar>();
+                    apSB.handleRect = apHandleRT;
+                    apSB.direction = Scrollbar.Direction.BottomToTop;
+                    apSB.targetGraphic = apHandleImg;
+
+                    apSR.verticalScrollbar = apSB;
+                    apSR.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
+
+                    // ── Select Power button at the bottom ──
+                    if (_craftButton != null)
+                    {
+                        var selectGO = Instantiate(_craftButton.gameObject, _activePowerPanel.transform);
+                        selectGO.name = "SelectPowerButton";
+                        selectGO.SetActive(true);
+
+                        var selectBtnRT = selectGO.GetComponent<RectTransform>();
+                        var craftBtnRT2 = _craftButton.GetComponent<RectTransform>();
+                        float btnH2 = craftBtnRT2 != null ? craftBtnRT2.rect.height : 30f;
+                        selectBtnRT.anchorMin = new Vector2(0f, 0f);
+                        selectBtnRT.anchorMax = new Vector2(1f, 0f);
+                        selectBtnRT.pivot = new Vector2(0.5f, 0f);
+                        selectBtnRT.sizeDelta = new Vector2(-24f, btnH2);
+                        selectBtnRT.anchoredPosition = new Vector2(0f, 8f);
+
+                        _selectPowerButton = selectGO.GetComponent<Button>();
+                        if (_selectPowerButton != null)
+                        {
+                            _selectPowerButton.onClick.RemoveAllListeners();
+                            _selectPowerButton.onClick.AddListener(OnSelectPowerClicked);
+                            _selectPowerButton.navigation = new Navigation { mode = Navigation.Mode.None };
+                        }
+
+                        _selectPowerLabel = selectGO.GetComponentInChildren<TMP_Text>();
+                        if (_selectPowerLabel != null)
+                            _selectPowerLabel.text = "Select Power";
+                        StripButtonHints(selectGO, _selectPowerLabel);
+
+                        // Raise scroll area bottom to clear the button
+                        apScrollRT.offsetMin = new Vector2(2f, btnH2 + 16f);
+                    }
+
+                    _activePowerPanel.SetActive(false);
                 }
             }
 
@@ -1626,6 +1884,7 @@ namespace StartingClassMod
             newTab = ((newTab % count) + count) % count;
             if (newTab == _activeTab) return;
             _activeTab = newTab;
+            _panelFocus = 0; // Reset to left panel when switching tabs
             RefreshTabHighlights();
             RefreshTabPanels();
             // Clear EventSystem selection to prevent stale button highlights
@@ -1651,8 +1910,9 @@ namespace StartingClassMod
             if (_previewCamera != null)
                 _previewCamera.enabled = showClasses;
 
-            // Toggle the skills panel (spans description + preview columns)
+            // Toggle the skills panel (Description column) and abilities panel (Preview column)
             if (_skillsPanel != null) _skillsPanel.SetActive(showSkills);
+            if (_activePowerPanel != null) _activePowerPanel.SetActive(showSkills);
             if (showSkills) RefreshSkillsPanel();
 
             // Toggle the about panel
@@ -1800,6 +2060,9 @@ namespace StartingClassMod
                         _unlockButtonLabel.text = "All Skills Unlocked";
                 }
             }
+
+            // Also refresh the active power panel
+            RefreshActivePowerPanel();
         }
 
         private void OnUnlockButtonClicked()
@@ -1833,6 +2096,282 @@ namespace StartingClassMod
                 }
                 return;
             }
+        }
+
+        private void RefreshActivePowerPanel()
+        {
+            if (_powerListRoot == null) return;
+
+            var player = Player.m_localPlayer;
+            if (player == null) return;
+
+            var invGui = InventoryGui.instance;
+            if (invGui == null || invGui.m_recipeElementPrefab == null) return;
+
+            string playerClass = ClassPersistence.GetSelectedClassName(player);
+            string activePower = ActivePowerManager.GetActivePower(player);
+
+            // Clear old entries
+            foreach (var entry in _powerEntries)
+            {
+                if (entry != null) Destroy(entry);
+            }
+            _powerEntries.Clear();
+            _powerIds.Clear();
+
+            // Use same row sizing as class list
+            var templateRT = invGui.m_recipeElementPrefab.transform as RectTransform;
+            float rowHeight = (templateRT != null) ? templateRT.rect.height : 40f;
+            rowHeight = Mathf.Max(rowHeight, 48f);
+            float spacing = rowHeight + 4f;
+
+            // Find description panel image for background style (same as class list)
+            var descPanel = _clonedPanel?.transform.Find("Decription");
+            Image descImg = descPanel != null ? descPanel.GetComponent<Image>() : null;
+
+            // Build entries
+            int entryIndex = 0;
+
+            // Forsaken Power entry
+            {
+                string forsakenName = "Forsaken Power";
+                StatusEffect gpSE = null;
+                player.GetGuardianPowerHUD(out gpSE, out _);
+                if (gpSE != null)
+                    forsakenName = Localization.instance.Localize(gpSE.m_name);
+
+                Sprite icon = (gpSE != null) ? gpSE.m_icon : null;
+                bool isCurrent = activePower == ActivePowerManager.Forsaken;
+                var entry = CreatePowerEntryFromPrefab(invGui, "forsaken", forsakenName, icon, true, isCurrent, entryIndex, spacing, rowHeight, descImg);
+                _powerEntries.Add(entry);
+                _powerIds.Add("forsaken");
+                entryIndex++;
+            }
+
+            // Class ability entries
+            if (!string.IsNullOrEmpty(playerClass))
+            {
+                StartingClass playerCls = null;
+                foreach (var c in _classes)
+                {
+                    if (c.Name == playerClass) { playerCls = c; break; }
+                }
+
+                if (playerCls != null && playerCls.Abilities != null)
+                {
+                    for (int i = 0; i < playerCls.Abilities.Count; i++)
+                    {
+                        var ability = playerCls.Abilities[i];
+                        if (ability.IsPassive) continue;
+
+                        string powerId = GetPowerIdForAbility(playerCls.Name, i);
+                        if (powerId == null) continue;
+
+                        bool unlocked = AbilityManager.IsAbilityUnlocked(player, playerCls.Name, i);
+                        bool isCurrent = unlocked && activePower == powerId;
+                        var entry = CreatePowerEntryFromPrefab(invGui, powerId, ability.Name, null, unlocked, isCurrent, entryIndex, spacing, rowHeight, descImg);
+                        _powerEntries.Add(entry);
+                        _powerIds.Add(powerId);
+                        entryIndex++;
+                    }
+                }
+            }
+
+            // Set content height
+            float contentH = entryIndex > 0 ? ((entryIndex - 1) * spacing + rowHeight) : rowHeight;
+            _powerListRoot.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, contentH);
+
+            // Auto-select the currently active power
+            int activeIdx = _powerIds.IndexOf(activePower);
+            _selectedPowerIndex = activeIdx >= 0 ? activeIdx : 0;
+            UpdatePowerSelection();
+        }
+
+        private GameObject CreatePowerEntryFromPrefab(InventoryGui invGui, string powerId, string displayName,
+            Sprite icon, bool unlocked, bool isCurrent, int index, float spacing, float rowHeight, Image descImg)
+        {
+            var element = Instantiate(invGui.m_recipeElementPrefab, _powerListRoot);
+            element.SetActive(true);
+            element.name = "PowerEntry_" + powerId;
+
+            var elemRT = element.transform as RectTransform;
+            StripLayoutComponents(element);
+
+            elemRT.anchorMin = new Vector2(0f, 1f);
+            elemRT.anchorMax = new Vector2(1f, 1f);
+            elemRT.pivot = new Vector2(0.5f, 1f);
+            elemRT.anchoredPosition = new Vector2(0f, index * -spacing);
+            elemRT.sizeDelta = new Vector2(0f, rowHeight);
+
+            // Style background to match class list
+            var elemImg = element.GetComponent<Image>();
+            if (elemImg != null && descImg != null)
+            {
+                elemImg.sprite = descImg.sprite;
+                elemImg.type = descImg.type;
+                elemImg.color = descImg.color;
+            }
+
+            // Button — click to highlight (select), not directly activate
+            var btn = element.GetComponent<Button>();
+            if (btn != null)
+            {
+                btn.onClick.RemoveAllListeners();
+                int capturedIdx = index;
+                btn.onClick.AddListener(() =>
+                {
+                    _selectedPowerIndex = capturedIdx;
+                    UpdatePowerSelection();
+                    if (EventSystem.current != null)
+                        EventSystem.current.SetSelectedGameObject(null);
+                });
+                btn.navigation = new Navigation { mode = Navigation.Mode.None };
+                btn.interactable = unlocked;
+            }
+
+            // Icon
+            float iconSize = rowHeight - 8f;
+            float iconPadding = 4f;
+            float textLeftOffset = iconPadding + iconSize + 6f;
+
+            var iconTr = element.transform.Find("icon");
+            if (iconTr != null)
+            {
+                var iconImg = iconTr.GetComponent<Image>();
+                if (iconImg != null && icon != null)
+                {
+                    iconImg.sprite = icon;
+                    iconImg.color = Color.white;
+                    iconImg.preserveAspect = true;
+                    iconTr.gameObject.SetActive(true);
+
+                    var iconRT = iconTr as RectTransform;
+                    if (iconRT != null)
+                    {
+                        iconRT.anchorMin = new Vector2(0f, 0.5f);
+                        iconRT.anchorMax = new Vector2(0f, 0.5f);
+                        iconRT.pivot = new Vector2(0f, 0.5f);
+                        iconRT.sizeDelta = new Vector2(iconSize, iconSize);
+                        iconRT.anchoredPosition = new Vector2(iconPadding, 0f);
+                    }
+                }
+                else
+                {
+                    iconTr.gameObject.SetActive(false);
+                    textLeftOffset = 8f;
+                }
+            }
+
+            // Name text
+            var nameTr = element.transform.Find("name");
+            if (nameTr != null)
+            {
+                var nameRT = nameTr as RectTransform;
+                if (nameRT != null)
+                {
+                    nameRT.anchorMin = new Vector2(0f, 0f);
+                    nameRT.anchorMax = new Vector2(1f, 1f);
+                    nameRT.pivot = new Vector2(0.5f, 0.5f);
+                    nameRT.offsetMin = new Vector2(textLeftOffset, 0f);
+                    nameRT.offsetMax = new Vector2(-4f, 0f);
+                }
+                var nameTxt = nameTr.GetComponent<TMP_Text>();
+                if (nameTxt != null)
+                {
+                    if (!unlocked)
+                    {
+                        nameTxt.text = $"<color=#666666>{displayName} (Locked)</color>";
+                    }
+                    else
+                    {
+                        nameTxt.text = displayName;
+                    }
+                    nameTxt.color = Color.white;
+                    nameTxt.enableAutoSizing = false;
+                    nameTxt.fontSize = Mathf.Max(nameTxt.fontSize, 22f);
+                    nameTxt.alignment = TextAlignmentOptions.MidlineLeft;
+                }
+            }
+
+            // Hide unused children
+            var durTr = element.transform.Find("Durability");
+            if (durTr != null) durTr.gameObject.SetActive(false);
+            var qualTr = element.transform.Find("QualityLevel");
+            if (qualTr != null) qualTr.gameObject.SetActive(false);
+            var selTr = element.transform.Find("selected");
+            if (selTr != null)
+            {
+                selTr.gameObject.SetActive(isCurrent);
+                var selImg = selTr.GetComponent<Image>();
+                if (selImg != null)
+                    selImg.color = new Color(0.83f, 0.64f, 0.31f, 0.5f);
+            }
+
+            return element;
+        }
+
+        private void UpdatePowerSelection()
+        {
+            // Update visual selection highlight on power entries
+            for (int i = 0; i < _powerEntries.Count; i++)
+            {
+                var selTr = _powerEntries[i]?.transform.Find("selected");
+                if (selTr != null)
+                    selTr.gameObject.SetActive(i == _selectedPowerIndex);
+            }
+
+            // Update select button
+            if (_selectPowerButton != null)
+            {
+                bool valid = _selectedPowerIndex >= 0 && _selectedPowerIndex < _powerIds.Count;
+                _selectPowerButton.interactable = valid;
+
+                if (_selectPowerLabel != null && valid)
+                {
+                    var player = Player.m_localPlayer;
+                    string currentActive = (player != null) ? ActivePowerManager.GetActivePower(player) : "";
+                    string selectedId = _powerIds[_selectedPowerIndex];
+
+                    if (selectedId == currentActive)
+                        _selectPowerLabel.text = "Selected";
+                    else
+                        _selectPowerLabel.text = "Select Power";
+                }
+            }
+        }
+
+        private void OnSelectPowerClicked()
+        {
+            if (_selectedPowerIndex < 0 || _selectedPowerIndex >= _powerIds.Count) return;
+
+            var player = Player.m_localPlayer;
+            if (player == null) return;
+
+            string powerId = _powerIds[_selectedPowerIndex];
+            ActivePowerManager.SetActivePower(player, powerId);
+            RefreshActivePowerPanel();
+        }
+
+        private static string GetPowerIdForAbility(string className, int abilityIndex)
+        {
+            if (className == "Assassin")
+            {
+                if (abilityIndex == 1) return "MarkedByFate";
+                if (abilityIndex == 5) return "BladeDance";
+            }
+            return null;
+        }
+
+        private string GetSelectedClassName()
+        {
+            if (_selectedIndex < 0 || _selectedIndex >= _classes.Count) return null;
+            return _classes[_selectedIndex].Name;
+        }
+
+        private StartingClass GetSelectedClass()
+        {
+            if (_selectedIndex < 0 || _selectedIndex >= _classes.Count) return null;
+            return _classes[_selectedIndex];
         }
 
         private void RefreshTabHighlights()
@@ -2107,16 +2646,17 @@ namespace StartingClassMod
             }
             StripButtonHints(tabGO, txt);
 
-            // Position: centered above the panel, uniform Y for all tabs
+            // Position: spans the full width of its panel, uniform Y for all tabs
             var tabRT = tabGO.GetComponent<RectTransform>();
             float panelLeft = GetRectLeft(panel, parentWidth);
             float panelRight = GetRectRight(panel, parentWidth);
+            float panelW = panelRight - panelLeft;
 
             tabRT.anchorMin = new Vector2(0f, 0f);
             tabRT.anchorMax = new Vector2(0f, 0f);
             tabRT.pivot = new Vector2(0.5f, 0f);
             float cx = (panelLeft + panelRight) / 2f;
-            tabRT.sizeDelta = new Vector2(craftBtnWidth, craftBtnHeight);
+            tabRT.sizeDelta = new Vector2(panelW, craftBtnHeight);
             tabRT.anchoredPosition = new Vector2(cx, tabY);
 
             return tabGO;

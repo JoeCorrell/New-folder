@@ -78,13 +78,11 @@ namespace StartingClassMod
             player.m_customData.Remove(ClassDataKey);
             player.m_customData.Remove(ClassPendingKey);
 
-            // Clear ability unlock keys, skill points, and cooldowns
+            // Clear all mod keys: abilities, cooldowns, skill points, active power
             var keysToRemove = new System.Collections.Generic.List<string>();
             foreach (var key in player.m_customData.Keys)
             {
-                if (key.StartsWith("StartingClassMod_Ability_") ||
-                    key.StartsWith("StartingClassMod_BladeDance_") ||
-                    key == "StartingClassMod_SkillPoints")
+                if (key.StartsWith("StartingClassMod_"))
                     keysToRemove.Add(key);
             }
             foreach (var key in keysToRemove)

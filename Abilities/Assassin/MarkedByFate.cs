@@ -1,20 +1,27 @@
 using System.Collections.Generic;
+using HarmonyLib;
 using UnityEngine;
 
 namespace StartingClassMod
 {
     /// <summary>
-    /// Assassin active ability: Mark enemies your crosshair is aimed at.
-    /// Up to 3 marks at once (charge-based, no cooldown).
+    /// Assassin active ability: AoE scan that marks all enemies within 50m.
     /// Marked enemies glow red and appear on the minimap.
-    /// Z key toggles mark/unmark on aimed target. ALT to switch abilities.
+    /// Continuously scans for the full duration, marking new enemies that enter range.
+    /// 10 minute cooldown. Activated via GP button when selected as active power.
     /// </summary>
     public static class MarkedByFate
     {
-        private const float MarkRange = 50f;
-        private const int MaxCharges = 3;
+        private const float ScanRange = 50f;
+        private const float ExpireRange = 100f;
+        private const float Duration = 600f; // 10 minutes active
+        private const float Cooldown = 600f; // 10 minutes cooldown
+        private const float ScanInterval = 1f; // Re-scan every 1 second
+        private const string CooldownKey = "StartingClassMod_MarkedByFate_CD";
+        private const string DurationKey = "StartingClassMod_MarkedByFate_End";
 
-        // Glow pulse color
+        private static float _nextScanTime;
+
         private static readonly Color GlowColor = new Color(1f, 0.15f, 0.1f, 1f);
 
         private struct Mark
@@ -24,16 +31,48 @@ namespace StartingClassMod
         }
 
         private static readonly List<Mark> _activeMarks = new List<Mark>();
-        private static AudioClip _markSfx;
 
-        /// <summary>Number of charges currently available (not spent on active marks).</summary>
-        public static int GetChargesRemaining() => MaxCharges - _activeMarks.Count;
+        // Reflection fields for activation effects
+        private static readonly System.Reflection.FieldInfo ZanimField =
+            AccessTools.Field(typeof(Character), "m_zanim");
+        private static readonly System.Reflection.FieldInfo GuardianSEField =
+            AccessTools.Field(typeof(Player), "m_guardianSE");
 
         /// <summary>Number of enemies currently marked.</summary>
         public static int GetActiveMarkCount() => _activeMarks.Count;
 
-        /// <summary>Toggle mark on the enemy under the crosshair (Z key).
-        /// If the target is already marked, unmarks it. Otherwise marks it.</summary>
+        /// <summary>Whether the ability is currently active (scanning).</summary>
+        public static bool IsActive(Player player)
+        {
+            if (player == null) return false;
+            return GetDurationRemaining(player) > 0f;
+        }
+
+        /// <summary>Seconds remaining on the active scan duration.</summary>
+        public static float GetDurationRemaining(Player player)
+        {
+            if (player == null) return 0f;
+            if (!player.m_customData.TryGetValue(DurationKey, out string val)) return 0f;
+            if (!double.TryParse(val, out double endTime)) return 0f;
+            double now = ZNet.instance != null ? ZNet.instance.GetTimeSeconds() : 0;
+            float remaining = (float)(endTime - now);
+            return remaining > 0f ? remaining : 0f;
+        }
+
+        /// <summary>Get cooldown remaining in seconds. Returns 0 while ability is active (duration running).</summary>
+        public static float GetCooldownRemaining(Player player)
+        {
+            if (player == null) return 0f;
+            // No cooldown while the ability is still active
+            if (GetDurationRemaining(player) > 0f) return 0f;
+            if (!player.m_customData.TryGetValue(CooldownKey, out string val)) return 0f;
+            if (!double.TryParse(val, out double endTime)) return 0f;
+            double now = ZNet.instance != null ? ZNet.instance.GetTimeSeconds() : 0;
+            float remaining = (float)(endTime - now);
+            return remaining > 0f ? remaining : 0f;
+        }
+
+        /// <summary>Activate: begin continuous scanning. Called from GP intercept.</summary>
         public static void TryActivate(Player player)
         {
             if (player == null) return;
@@ -42,56 +81,79 @@ namespace StartingClassMod
             if (className != "Assassin") return;
             if (!AbilityManager.IsAbilityUnlocked(player, "Assassin", 1)) return;
 
-            // Get the creature the player is looking at
-            Character target = GetAimedCharacter(player);
-
-            if (target == null || target.IsPlayer() || target.IsDead())
-                return;
-
-            // Check range
-            float dist = Vector3.Distance(player.transform.position, target.transform.position);
-            if (dist > MarkRange)
-                return;
-
-            // If already marked, unmark it (toggle)
-            if (IsMarked(target))
+            // Check cooldown
+            if (GetCooldownRemaining(player) > 0f)
             {
-                for (int i = _activeMarks.Count - 1; i >= 0; i--)
+                player.Message(MessageHud.MessageType.Center, "Marked by Fate is not ready");
+                return;
+            }
+
+            // Clear existing marks from previous activation
+            ClearAllMarks();
+
+            // Set duration end time
+            if (ZNet.instance != null)
+            {
+                double now = ZNet.instance.GetTimeSeconds();
+                player.m_customData[DurationKey] = (now + Duration).ToString("F0");
+                // Cooldown starts after duration ends
+                player.m_customData[CooldownKey] = (now + Duration + Cooldown).ToString("F0");
+            }
+
+            // Do initial scan immediately
+            _nextScanTime = 0f;
+            int marked = ScanAndMark(player);
+
+            // Play activation effects
+            PlayActivateEffects(player);
+
+            player.Message(MessageHud.MessageType.Center, $"Marked by Fate active — {marked} enemies detected");
+        }
+
+        /// <summary>Scan for enemies within range and mark any new ones.</summary>
+        private static int ScanAndMark(Player player)
+        {
+            List<Character> allChars = Character.GetAllCharacters();
+            int newMarks = 0;
+            Vector3 playerPos = player.transform.position;
+
+            foreach (var character in allChars)
+            {
+                if (character == null || character.IsDead()) continue;
+                if (character.IsPlayer()) continue;
+                if (character.IsTamed()) continue;
+                if (IsMarked(character)) continue; // Already tracked
+
+                float dist = Vector3.Distance(playerPos, character.transform.position);
+                if (dist > ScanRange) continue;
+
+                var pin = Minimap.instance?.AddPin(
+                    character.transform.position,
+                    Minimap.PinType.Icon3,
+                    character.m_name,
+                    false, false, 0L);
+
+                if (pin != null)
                 {
-                    if (_activeMarks[i].Target == target)
-                    {
-                        RemoveGlow(_activeMarks[i].Target);
-                        RemoveMark(i);
-                        PlayMarkSfx(player);
-                        return;
-                    }
+                    _activeMarks.Add(new Mark { Target = character, Pin = pin });
+                    ApplyGlow(character);
+                    newMarks++;
                 }
-                return;
             }
+            return newMarks;
+        }
 
-            // Check charges
-            if (_activeMarks.Count >= MaxCharges)
-                return;
+        private static void PlayActivateEffects(Player player)
+        {
+            // Trigger gpower animation (raises hands)
+            var zanim = ZanimField?.GetValue(player) as ZSyncAnimation;
+            if (zanim != null)
+                zanim.SetTrigger("gpower");
 
-            var pin = Minimap.instance?.AddPin(
-                target.transform.position,
-                Minimap.PinType.Icon3,
-                target.m_name,
-                false,
-                false,
-                0L);
-
-            if (pin != null)
-            {
-                _activeMarks.Add(new Mark
-                {
-                    Target = target,
-                    Pin = pin
-                });
-
-                ApplyGlow(target);
-                PlayMarkSfx(player);
-            }
+            // Play the forsaken power's start effects (sound + visuals)
+            var guardianSE = GuardianSEField?.GetValue(player) as StatusEffect;
+            if (guardianSE != null && guardianSE.m_startEffects != null)
+                guardianSE.m_startEffects.Create(player.GetCenterPoint(), player.transform.rotation, player.transform);
         }
 
         /// <summary>Check if a specific character is currently marked.</summary>
@@ -103,16 +165,36 @@ namespace StartingClassMod
             return false;
         }
 
-        /// <summary>Update mark positions and glow each frame.</summary>
+        /// <summary>Update mark positions, glow, and continuous scanning each frame.</summary>
         public static void UpdateMarks()
         {
+            var player = Player.m_localPlayer;
+
+            // While active, continuously scan for new enemies entering range
+            if (player != null && IsActive(player))
+            {
+                if (Time.time >= _nextScanTime)
+                {
+                    _nextScanTime = Time.time + ScanInterval;
+                    ScanAndMark(player);
+                }
+            }
+            else if (player != null && _activeMarks.Count > 0 && GetDurationRemaining(player) <= 0f
+                     && player.m_customData.ContainsKey(DurationKey))
+            {
+                // Duration just expired — clear all marks
+                ClearAllMarks();
+                player.m_customData.Remove(DurationKey);
+                player.Message(MessageHud.MessageType.Center, "Marked by Fate expired");
+                return;
+            }
+
             if (_activeMarks.Count == 0) return;
 
             for (int i = _activeMarks.Count - 1; i >= 0; i--)
             {
                 var mark = _activeMarks[i];
 
-                // Remove marks for dead or destroyed targets
                 if (mark.Target == null || mark.Target.IsDead())
                 {
                     if (mark.Target != null)
@@ -121,12 +203,10 @@ namespace StartingClassMod
                     continue;
                 }
 
-                // Remove marks for enemies that are too far away (>100m)
-                var localPlayer = Player.m_localPlayer;
-                if (localPlayer != null)
+                if (player != null)
                 {
-                    float dist = Vector3.Distance(localPlayer.transform.position, mark.Target.transform.position);
-                    if (dist > 100f)
+                    float dist = Vector3.Distance(player.transform.position, mark.Target.transform.position);
+                    if (dist > ExpireRange)
                     {
                         RemoveGlow(mark.Target);
                         RemoveMark(i);
@@ -134,11 +214,9 @@ namespace StartingClassMod
                     }
                 }
 
-                // Update pin position to track the enemy
                 if (mark.Pin != null)
                     mark.Pin.m_pos = mark.Target.transform.position;
 
-                // Pulse the glow
                 float pulse = 0.5f + 0.5f * Mathf.Sin(Time.time * 3f);
                 Color pulsed = GlowColor * (0.6f + pulse * 0.4f);
                 if (MaterialMan.instance != null)
@@ -155,24 +233,6 @@ namespace StartingClassMod
                     RemoveGlow(_activeMarks[i].Target);
                 RemoveMark(i);
             }
-        }
-
-        /// <summary>Get the character the player is aiming at via crosshair.</summary>
-        private static Character GetAimedCharacter(Player player)
-        {
-            Character target = player.GetHoverCreature();
-            if (target != null) return target;
-
-            var cam = GameCamera.instance;
-            if (cam == null) return null;
-
-            int mask = LayerMask.GetMask("character", "character_net");
-            if (Physics.Raycast(cam.transform.position, cam.transform.forward, out RaycastHit hit, MarkRange, mask))
-            {
-                var rb = hit.collider.attachedRigidbody;
-                return rb != null ? rb.GetComponent<Character>() : hit.collider.GetComponent<Character>();
-            }
-            return null;
         }
 
         private static void RemoveMark(int index)
@@ -193,20 +253,6 @@ namespace StartingClassMod
         {
             if (target == null || MaterialMan.instance == null) return;
             MaterialMan.instance.ResetValue(target.gameObject, ShaderProps._EmissionColor);
-        }
-
-        private static void PlayMarkSfx(Player player)
-        {
-            if (_markSfx == null)
-            {
-                foreach (var clip in Resources.FindObjectsOfTypeAll<AudioClip>())
-                {
-                    if (clip.name == "UI_InventoryHide_S_01")
-                    { _markSfx = clip; break; }
-                }
-            }
-            if (_markSfx != null)
-                AudioSource.PlayClipAtPoint(_markSfx, player.transform.position);
         }
     }
 }

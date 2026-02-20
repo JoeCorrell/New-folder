@@ -70,7 +70,7 @@ namespace StartingClassMod
         {
             return new StartingClass(
                 "Assassin",
-                $"{PastLife}\nYou were the blade that struck between heartbeats, the shadow that slipped past locked doors and sleeping guards. They found your victims at dawn and blamed the gods.\n\n{Purpose}\nValheim's creatures have never known a killer so quiet. Move unseen, strike once, and vanish.\n\n{AbilityName("Killing Edge")}  {Passive}\nBackstab attacks deal twenty percent increased damage, turning every ambush into a decisive strike.\n\n{LockedAbilityName("Marked by Fate")}\n{LockedDesc("Designate enemies with a hunter's mark, tracking their every movement through terrain and obstacles.")}",
+                $"{PastLife}\nYou were the blade that struck between heartbeats, the shadow that slipped past locked doors and sleeping guards. They found your victims at dawn and blamed the gods.\n\n{Purpose}\nValheim's creatures have never known a killer so quiet. Move unseen, strike once, and vanish.\n\n{AbilityName("Killing Edge")}  {Passive}\nBackstab attacks deal twenty percent increased damage, turning every ambush into a decisive strike.\n\n{LockedAbilityName("Marked by Fate")}\n{LockedDesc("Reveal all nearby enemies with a hunter's mark, tracking their every movement through terrain and obstacles.")}",
                 new List<StartingItem>
                 {
                     new StartingItem("Hammer"),
@@ -89,11 +89,11 @@ namespace StartingClassMod
                 abilities: new List<ClassAbility>
                 {
                     new ClassAbility("Killing Edge", "Your instinct for finding weak points makes every ambush lethal. Backstab damage is increased by 20% (1.2x multiplier applied to the backstab bonus). You also start with +10 Sneak and +5 Knives from your past life as a blade in the dark.", true, 0),
-                    new ClassAbility("Marked by Fate", "Press Z to place a hunter's mark on the enemy you're aiming at within 50m. Marked targets glow red and are tracked on your minimap, visible through terrain and darkness. You can maintain up to 3 marks at once. Press Z on a marked target to remove the mark and reclaim the charge. Marks automatically expire if the target moves beyond 100m. Use ALT to switch between abilities.", false, 10),
-                    new ClassAbility("Shadow Step", "Your practiced footwork lets you move through stealth with unnatural speed. Sneak movement speed is increased by 25% and stamina drain while sneaking is reduced by 25%, allowing you to reposition for the perfect strike without exhausting yourself.", true, 20),
-                    new ClassAbility("Nature's Shroud", "The wilderness becomes your greatest disguise. While crouched within 4m of bushes, shrubs, or undergrowth, your stealth factor is boosted by 80%, making you virtually invisible to nearby enemies even at close range.", true, 35),
-                    new ClassAbility("Ghost Stride", "You run with a supernatural lightness that barely disturbs the air. Noise produced while running is reduced by 70%, letting you sprint at full speed without alerting enemies that would normally hear your approach from a distance.", true, 50),
-                    new ClassAbility("Blade Dance", "Press Z to enter a state of deadly focus. For 15 seconds, all knife and dagger attacks deal double damage (2x multiplier). After the frenzy ends, you need 10 minutes to recover before activating it again. Use ALT to switch between abilities.", false, 70)
+                    new ClassAbility("Marked by Fate", "Activate to continuously reveal all enemies within 50m for 10 minutes. Every nearby creature is bathed in a red glow and tracked on your minimap, visible through terrain and darkness. New enemies entering range are automatically detected. Marks expire when the duration ends or targets move beyond 100m. 10 minute cooldown.", false, 0),
+                    new ClassAbility("Shadow Step", "Your practiced footwork lets you move through stealth with unnatural speed. Sneak movement speed is increased by 25% and stamina drain while sneaking is reduced by 25%, allowing you to reposition for the perfect strike without exhausting yourself.", true, 0),
+                    new ClassAbility("Nature's Shroud", "The wilderness becomes your greatest disguise. While crouched within 4m of bushes, shrubs, or undergrowth, your stealth factor is boosted by 80%, making you virtually invisible to nearby enemies even at close range.", true, 0),
+                    new ClassAbility("Ghost Stride", "You run with a supernatural lightness that barely disturbs the air. Noise produced while running is reduced by 70%, letting you sprint at full speed without alerting enemies that would normally hear your approach from a distance.", true, 0),
+                    new ClassAbility("Blade Dance", "Activate to enter a state of deadly focus. For 1 minute, all knife and dagger attacks deal double damage (2x multiplier). After the frenzy ends, you need 10 minutes to recover before activating it again. 10 minute cooldown.", false, 0)
                 }
             );
         }

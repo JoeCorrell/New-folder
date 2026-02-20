@@ -36,7 +36,8 @@ namespace StartingClassMod
         /// <summary>Spend points. Returns true if successful, false if insufficient.</summary>
         public static bool SpendPoints(Player player, int cost)
         {
-            if (player == null || cost <= 0) return false;
+            if (player == null || cost < 0) return false;
+            if (cost == 0) return true; // Free abilities always succeed
             int current = GetPoints(player);
             if (current < cost) return false;
             player.m_customData[PointsKey] = (current - cost).ToString();
