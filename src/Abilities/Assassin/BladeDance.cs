@@ -15,8 +15,7 @@ namespace StartingClassMod
         private const float Duration = 60f; // 1 minute
         private const float Cooldown = 600f; // 10 minutes
         private const string CooldownKey = "StartingClassMod_BladeDance_CD";
-
-        private static float _activeUntil;
+        private const string DurationKey = "StartingClassMod_BladeDance_End";
 
         // Cached reflection for non-public fields
         private static readonly FieldInfo ZanimField =
@@ -27,19 +26,30 @@ namespace StartingClassMod
         /// <summary>Whether the damage buff is currently active.</summary>
         public static bool IsActive()
         {
-            return Time.time < _activeUntil;
+            var player = Player.m_localPlayer;
+            if (player == null) return false;
+            return GetTimeRemaining() > 0f;
         }
 
         /// <summary>Seconds remaining on the buff, or 0 if inactive.</summary>
         public static float GetTimeRemaining()
         {
-            return IsActive() ? _activeUntil - Time.time : 0f;
+            var player = Player.m_localPlayer;
+            if (player == null) return 0f;
+            if (!player.m_customData.TryGetValue(DurationKey, out string val)) return 0f;
+            if (!double.TryParse(val, out double endTime)) return 0f;
+            if (ZNet.instance == null) return 0f;
+            double now = ZNet.instance.GetTimeSeconds();
+            float remaining = (float)(endTime - now);
+            return remaining > 0f ? remaining : 0f;
         }
 
         /// <summary>Seconds remaining on cooldown, or 0 if ready.</summary>
         public static float GetCooldownRemaining(Player player)
         {
             if (player == null) return 0f;
+            // No cooldown while the ability is still active
+            if (GetTimeRemaining() > 0f) return 0f;
             if (!player.m_customData.TryGetValue(CooldownKey, out string val)) return 0f;
             if (!double.TryParse(val, out double cdEnd)) return 0f;
             if (ZNet.instance == null) return 0f;
@@ -64,11 +74,11 @@ namespace StartingClassMod
                 return;
             }
 
-            _activeUntil = Time.time + Duration;
-
             if (ZNet.instance == null) return;
-            double cdEnd = ZNet.instance.GetTimeSeconds() + Cooldown;
-            player.m_customData[CooldownKey] = cdEnd.ToString("F0");
+            double now = ZNet.instance.GetTimeSeconds();
+            player.m_customData[DurationKey] = (now + Duration).ToString("F0");
+            // Cooldown starts after duration ends
+            player.m_customData[CooldownKey] = (now + Duration + Cooldown).ToString("F0");
 
             PlayActivateEffects(player);
             AddHudStatusEffect(player);
@@ -78,7 +88,7 @@ namespace StartingClassMod
         /// <summary>Clear active state (for logout).</summary>
         public static void Reset()
         {
-            _activeUntil = 0f;
+            // Nothing to reset — state is in m_customData
         }
 
         private static void PlayActivateEffects(Player player)

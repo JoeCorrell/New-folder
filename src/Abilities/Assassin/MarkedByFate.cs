@@ -52,9 +52,10 @@ namespace StartingClassMod
         public static float GetDurationRemaining(Player player)
         {
             if (player == null) return 0f;
+            if (ZNet.instance == null) return 0f;
             if (!player.m_customData.TryGetValue(DurationKey, out string val)) return 0f;
             if (!double.TryParse(val, out double endTime)) return 0f;
-            double now = ZNet.instance != null ? ZNet.instance.GetTimeSeconds() : 0;
+            double now = ZNet.instance.GetTimeSeconds();
             float remaining = (float)(endTime - now);
             return remaining > 0f ? remaining : 0f;
         }
