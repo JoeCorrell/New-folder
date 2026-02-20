@@ -880,15 +880,14 @@ namespace StartingClassMod
             var tabDescPanel = _clonedPanel.transform.Find("Decription") as RectTransform;
             var tabPreviewPanel = _clonedPanel.transform.Find("PreviewContainer") as RectTransform;
 
-            // Shift panels up within the UI background so they don't sit too low,
-            // then nudge top edge down slightly to leave room for tab buttons.
+            // Shift panels up so they fill the UI background fully.
+            // Top edge extends to match the background, bottom lifts up.
             float liftUp = 15f;
-            float topNudge = tabHeight; // small top inset for tabs
             foreach (var p in new[] { tabListPanel, tabDescPanel, tabPreviewPanel })
             {
                 if (p == null) continue;
                 p.offsetMin = new Vector2(p.offsetMin.x, p.offsetMin.y + liftUp);
-                p.offsetMax = new Vector2(p.offsetMax.x, p.offsetMax.y + liftUp - topNudge);
+                p.offsetMax = new Vector2(p.offsetMax.x, p.offsetMax.y + liftUp);
             }
 
             // Create tab buttons above each panel, cloning the craft button's visual style
@@ -1437,7 +1436,7 @@ namespace StartingClassMod
                 containerRT.pivot = origRecipeList.pivot;
 
                 // Keep a small gap from the description panel and match width to class-list column.
-                float scrollGap = -1f;
+                float scrollGap = -3f;
                 float leftEdge = contentBaseWidth - margin + scrollGap;
                 float rightEdge = leftEdge + columnWidth;
                 float maxRightEdge = totalWidth - margin - 3f;
@@ -2119,11 +2118,14 @@ namespace StartingClassMod
             _powerEntries.Clear();
             _powerIds.Clear();
 
-            // Use same row sizing as class list
+            // Use identical row sizing as class list
             var templateRT = invGui.m_recipeElementPrefab.transform as RectTransform;
-            float rowHeight = (templateRT != null) ? templateRT.rect.height : 40f;
-            rowHeight = Mathf.Max(rowHeight, 48f);
-            float spacing = rowHeight + 4f;
+            float templateHeight = 32f;
+            if (templateRT != null)
+                templateHeight = Mathf.Max(24f, Mathf.Max(templateRT.rect.height, templateRT.sizeDelta.y));
+            float rowHeight = Mathf.Max(templateHeight * 2f, 48f);
+            float gap = 6f;
+            float spacing = rowHeight + gap;
 
             // Find description panel image for background style (same as class list)
             var descPanel = _clonedPanel?.transform.Find("Decription");
@@ -2288,7 +2290,7 @@ namespace StartingClassMod
                     }
                     nameTxt.color = Color.white;
                     nameTxt.enableAutoSizing = false;
-                    nameTxt.fontSize = Mathf.Max(nameTxt.fontSize, 22f);
+                    nameTxt.fontSize = Mathf.Max(nameTxt.fontSize, 24f);
                     nameTxt.alignment = TextAlignmentOptions.MidlineLeft;
                 }
             }
