@@ -2116,7 +2116,6 @@ namespace StartingClassMod
                 {
                     // ── Unlocked ──
                     string accentColor = ability.IsPassive ? "#8AE58A" : "#E5C56A";
-                    sb.AppendLine($"<align=center><color={accentColor}>━━━━━━━━━━━━━━━━━━━━━━</color></align>");
                     sb.AppendLine($"<size=22><color={accentColor}>\u2605 {ability.Name}</color></size>");
                     sb.AppendLine($"<size=14><color={typeColor}>{typeTag}</color> <color={accentColor}>\u2014 Unlocked</color></size>");
                     sb.AppendLine();
@@ -2135,7 +2134,6 @@ namespace StartingClassMod
                         }
                         sb.AppendLine("</color></size>");
                     }
-                    sb.AppendLine($"<align=center><color={accentColor}>━━━━━━━━━━━━━━━━━━━━━━</color></align>");
                 }
                 else
                 {
@@ -2143,12 +2141,10 @@ namespace StartingClassMod
                     if (nextLockedIndex < 0) nextLockedIndex = i;
 
                     bool isUltimate = i == cls.Abilities.Count - 1 && !ability.IsPassive;
-                    string borderColor = isUltimate ? "#8B4513" : "#555555";
                     string nameColor = isUltimate ? "#D4A24E" : "#BBBBBB";
                     string descColor = isUltimate ? "#999999" : "#888888";
                     string icon = isUltimate ? "\u25C6" : "\u25C8";
 
-                    sb.AppendLine($"<align=center><color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━</color></align>");
                     sb.AppendLine($"<size=22><color={nameColor}>{icon} {ability.Name}</color></size>");
                     sb.AppendLine($"<size=14><color={typeColor}>{typeTag}</color> <color=#777777>\u2022 {tierLabel} \u2022 {ability.PointCost} pts</color></size>");
                     sb.AppendLine();
@@ -2156,7 +2152,6 @@ namespace StartingClassMod
                     sb.AppendLine();
                     string haveColor = currentPoints >= ability.PointCost ? "#8AE58A" : "#666666";
                     sb.AppendLine($"<size=15><color=#D4A24E>\u25C6 {ability.PointCost} Skill Points</color>  <color={haveColor}>(You have: {currentPoints})</color></size>");
-                    sb.AppendLine($"<align=center><color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━</color></align>");
                 }
 
                 // Connector arrow between abilities
@@ -2308,7 +2303,8 @@ namespace StartingClassMod
 
                         bool unlocked = AbilityManager.IsAbilityUnlocked(player, playerCls.Name, i);
                         bool isCurrent = unlocked && activePower == powerId;
-                        var entry = CreatePowerEntryFromPrefab(invGui, powerId, ability.Name, null, unlocked, isCurrent, entryIndex, spacing, rowHeight, descImg);
+                        Sprite abilityIcon = TextureLoader.LoadAbilitySprite(powerId);
+                        var entry = CreatePowerEntryFromPrefab(invGui, powerId, ability.Name, abilityIcon, unlocked, isCurrent, entryIndex, spacing, rowHeight, descImg);
                         _powerEntries.Add(entry);
                         _powerIds.Add(powerId);
                         entryIndex++;
@@ -2993,23 +2989,19 @@ namespace StartingClassMod
                         if (isUnlocked)
                         {
                             string accentColor = "#E5C56A";
-                            sb.AppendLine($"<align=center><color={accentColor}>━━━━━━━━━━━━━━━━━━━━━━</color></align>");
                             sb.AppendLine($"<size=22><color={accentColor}>\u2605 {tierName}</color></size>");
                             sb.AppendLine($"<size=14><color=#D4A24E>Enhancement</color> <color={accentColor}>\u2014 Unlocked</color></size>");
                             sb.AppendLine();
                             sb.AppendLine($"<size=16>{tierDesc}</size>");
                             sb.AppendLine();
                             sb.AppendLine($"<size=15><color=#8AE58A>+{perLevel:F0} per piece ({pieceCount} pcs = +{tierTotal:F0} Armor)</color></size>");
-                            sb.AppendLine($"<align=center><color={accentColor}>━━━━━━━━━━━━━━━━━━━━━━</color></align>");
                         }
                         else
                         {
-                            string borderColor = isMax ? "#8B4513" : "#555555";
                             string nameColor = isMax ? "#D4A24E" : "#BBBBBB";
                             string descColor = isMax ? "#999999" : "#888888";
                             string icon = isMax ? "\u25C6" : "\u25C8";
 
-                            sb.AppendLine($"<align=center><color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━</color></align>");
                             sb.AppendLine($"<size=22><color={nameColor}>{icon} {tierName}</color></size>");
                             sb.AppendLine($"<size=14><color=#D4A24E>Enhancement</color> <color=#777777>\u2022 Tier {lvl} \u2022 {ArmorUpgradeSystem.CostPerLevel} pts</color></size>");
                             sb.AppendLine();
@@ -3019,7 +3011,6 @@ namespace StartingClassMod
                             sb.AppendLine();
                             string haveColor = points >= ArmorUpgradeSystem.CostPerLevel ? "#8AE58A" : "#666666";
                             sb.AppendLine($"<size=15><color=#D4A24E>\u25C6 {ArmorUpgradeSystem.CostPerLevel} Skill Points</color>  <color={haveColor}>(You have: {points})</color></size>");
-                            sb.AppendLine($"<align=center><color={borderColor}>━━━━━━━━━━━━━━━━━━━━━━</color></align>");
                         }
 
                         if (lvl < ArmorUpgradeSystem.MaxLevel)

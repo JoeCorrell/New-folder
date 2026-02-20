@@ -71,6 +71,7 @@ namespace StartingClassMod
             player.m_customData[CooldownKey] = cdEnd.ToString("F0");
 
             PlayActivateEffects(player);
+            AddHudStatusEffect(player);
             StartingClassPlugin.Log("Blade Dance activated.");
         }
 
@@ -91,6 +92,22 @@ namespace StartingClassMod
             var guardianSE = GuardianSEField?.GetValue(player) as StatusEffect;
             if (guardianSE != null && guardianSE.m_startEffects != null)
                 guardianSE.m_startEffects.Create(player.GetCenterPoint(), player.transform.rotation, player.transform);
+        }
+
+        private static void AddHudStatusEffect(Player player)
+        {
+            var seman = player.GetSEMan();
+            if (seman == null) return;
+
+            int hash = SE_BladeDance.SEName.GetStableHashCode();
+            if (seman.HaveStatusEffect(hash)) return;
+
+            var se = ScriptableObject.CreateInstance<SE_BladeDance>();
+            se.name = SE_BladeDance.SEName;
+            se.m_name = "Blade Dance";
+            se.m_ttl = Duration;
+            se.m_icon = TextureLoader.LoadAbilitySprite("BladeDance");
+            seman.AddStatusEffect(se);
         }
     }
 }

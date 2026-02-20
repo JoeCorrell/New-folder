@@ -105,12 +105,15 @@ namespace StartingClassMod
 
             // Do initial scan immediately
             _nextScanTime = 0f;
-            int marked = ScanAndMark(player);
+            ScanAndMark(player);
 
             // Play activation effects
             PlayActivateEffects(player);
 
-            player.Message(MessageHud.MessageType.Center, $"Marked by Fate active — {marked} enemies detected");
+            // Add HUD status effect with icon + duration timer
+            AddHudStatusEffect(player);
+
+            player.Message(MessageHud.MessageType.Center, "Marked by Fate activated");
         }
 
         /// <summary>Scan for enemies within range and mark any new ones.</summary>
@@ -256,6 +259,22 @@ namespace StartingClassMod
         {
             if (target == null || MaterialMan.instance == null) return;
             MaterialMan.instance.ResetValue(target.gameObject, ShaderProps._EmissionColor);
+        }
+
+        private static void AddHudStatusEffect(Player player)
+        {
+            var seman = player.GetSEMan();
+            if (seman == null) return;
+
+            int hash = SE_MarkedByFate.SEName.GetStableHashCode();
+            if (seman.HaveStatusEffect(hash)) return;
+
+            var se = ScriptableObject.CreateInstance<SE_MarkedByFate>();
+            se.name = SE_MarkedByFate.SEName;
+            se.m_name = "Marked by Fate";
+            se.m_ttl = Duration;
+            se.m_icon = TextureLoader.LoadAbilitySprite("MarkedByFate");
+            seman.AddStatusEffect(se);
         }
     }
 }
