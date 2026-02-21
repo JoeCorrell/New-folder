@@ -37,13 +37,9 @@ namespace StartingClassMod
                     // Keen Eye (idx 2): +15% bow and spear damage
                     if (AbilityManager.IsAbilityUnlocked(localPlayer, "Hunter", 2))
                     {
-                        var weapon = localPlayer.GetCurrentWeapon();
-                        if (weapon != null &&
-                            (weapon.m_shared.m_skillType == Skills.SkillType.Bows ||
-                             weapon.m_shared.m_skillType == Skills.SkillType.Spears))
-                        {
+                        var skill = localPlayer.GetCurrentWeapon()?.m_shared?.m_skillType;
+                        if (skill == Skills.SkillType.Bows || skill == Skills.SkillType.Spears)
                             hit.m_damage.Modify(1.15f);
-                        }
                     }
                 }
 

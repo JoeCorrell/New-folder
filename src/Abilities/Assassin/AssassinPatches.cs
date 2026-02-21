@@ -41,10 +41,8 @@ namespace StartingClassMod
                 if (AbilityManager.IsAbilityUnlocked(player, "Assassin", 5) && BladeDance.IsActive())
                 {
                     var weapon = player.GetCurrentWeapon();
-                    if (weapon != null && weapon.m_shared.m_skillType == Skills.SkillType.Knives)
-                    {
+                    if (weapon?.m_shared?.m_skillType == Skills.SkillType.Knives)
                         hit.m_damage.Modify(2f);
-                    }
                 }
             }
         }

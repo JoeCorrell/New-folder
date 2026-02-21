@@ -41,12 +41,13 @@ namespace StartingClassMod
         {
             var player = Player.m_localPlayer;
             if (player == null) return false;
-            return GetTimeRemaining() > 0f;
+            return GetTimeRemaining(player) > 0f;
         }
 
-        public static float GetTimeRemaining()
+        public static float GetTimeRemaining() => GetTimeRemaining(Player.m_localPlayer);
+
+        public static float GetTimeRemaining(Player player)
         {
-            var player = Player.m_localPlayer;
             if (player == null) return 0f;
             if (!player.m_customData.TryGetValue(DurationKey, out string val)) return 0f;
             if (!double.TryParse(val, out double endTime)) return 0f;
@@ -228,10 +229,15 @@ namespace StartingClassMod
             seman.AddStatusEffect(se);
         }
 
-        /// <summary>Destroy all trail markers and clean up.</summary>
+        /// <summary>Destroy all trail markers and clean up shared resources.</summary>
         public static void ClearAll()
         {
             DestroyAllMarkers();
+            if (_sharedMarkerMaterial != null)
+            {
+                Object.Destroy(_sharedMarkerMaterial);
+                _sharedMarkerMaterial = null;
+            }
         }
 
         private static void DestroyAllMarkers()

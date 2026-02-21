@@ -28,13 +28,15 @@ namespace StartingClassMod
         {
             var player = Player.m_localPlayer;
             if (player == null) return false;
-            return GetTimeRemaining() > 0f;
+            return GetTimeRemaining(player) > 0f;
         }
 
         /// <summary>Seconds remaining on the buff, or 0 if inactive.</summary>
-        public static float GetTimeRemaining()
+        public static float GetTimeRemaining() => GetTimeRemaining(Player.m_localPlayer);
+
+        /// <summary>Seconds remaining on the buff for a specific player, or 0 if inactive.</summary>
+        public static float GetTimeRemaining(Player player)
         {
-            var player = Player.m_localPlayer;
             if (player == null) return 0f;
             if (!player.m_customData.TryGetValue(DurationKey, out string val)) return 0f;
             if (!double.TryParse(val, out double endTime)) return 0f;

@@ -240,10 +240,14 @@ namespace StartingClassMod
         /// <summary>Clean up when logging out.</summary>
         public static void Destroy()
         {
+            foreach (var sprite in _spriteCache.Values)
+                if (sprite != null) Object.Destroy(sprite);
+            _spriteCache.Clear();
+            _loadedClass = null;
+
             if (_placeholderTex != null)
                 Object.Destroy(_placeholderTex);
             _placeholderTex = null;
-            _spriteCache.Clear();
         }
 
         private static string _loadedClass;

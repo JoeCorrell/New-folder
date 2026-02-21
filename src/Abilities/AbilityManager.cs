@@ -207,14 +207,18 @@ namespace StartingClassMod
         private static void ApplySE<T>(SEMan seman, string seName) where T : StatusEffect
         {
             int hash = seName.GetStableHashCode();
-            if (!seman.HaveStatusEffect(hash))
+            if (seman.HaveStatusEffect(hash)) return;
+
+            var se = ScriptableObject.CreateInstance<T>();
+            if (se == null)
             {
-                var se = ScriptableObject.CreateInstance<T>();
-                se.name = seName;
-                se.m_name = seName;
-                se.m_ttl = 0f;
-                seman.AddStatusEffect(se);
+                StartingClassPlugin.LogWarning($"Failed to create StatusEffect instance for '{seName}'.");
+                return;
             }
+            se.name = seName;
+            se.m_name = seName;
+            se.m_ttl = 0f;
+            seman.AddStatusEffect(se);
         }
     }
 }

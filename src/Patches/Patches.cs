@@ -334,7 +334,12 @@ namespace StartingClassMod
 
                 // Block if player can't act (same checks as vanilla StartGuardianPower)
                 bool inAttack = __instance.InAttack();
-                bool haveQueued = HaveQueuedChainMethod != null && (bool)HaveQueuedChainMethod.Invoke(__instance, null);
+                bool haveQueued = false;
+                if (HaveQueuedChainMethod != null)
+                {
+                    try { haveQueued = (bool)HaveQueuedChainMethod.Invoke(__instance, null); }
+                    catch { /* Ignore reflection errors — treat as no queued chain */ }
+                }
                 if ((inAttack && !haveQueued) || __instance.InDodge() || !__instance.CanMove() ||
                     __instance.IsKnockedBack() || __instance.IsStaggering() || __instance.InMinorAction())
                 {

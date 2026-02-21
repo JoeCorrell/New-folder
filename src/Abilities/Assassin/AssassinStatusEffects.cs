@@ -38,7 +38,9 @@ namespace StartingClassMod
         private float _checkTimer;
         private bool _nearVegetation;
 
-        private static readonly int PieceMask = LayerMask.GetMask("piece", "piece_nonsolid", "Default_small");
+        // Vegetation objects (bushes, shrubs, saplings) sit on Default_small/Default layers.
+        // Exclude "piece"/"piece_nonsolid" (player-built structures) to avoid false positives.
+        private static readonly int PieceMask = LayerMask.GetMask("Default_small", "Default");
 
         public override bool IsDone() => false;
 
@@ -69,16 +71,14 @@ namespace StartingClassMod
             var colliders = Physics.OverlapSphere(m_character.transform.position, VegetationCheckRadius, PieceMask);
             foreach (var col in colliders)
             {
-                string name = col.gameObject.name;
-                if (name.StartsWith("Bush") ||
-                    name.StartsWith("Shrub") ||
-                    name.StartsWith("bush") ||
+                string name = col.gameObject.name.ToLowerInvariant();
+                if (name.StartsWith("bush") ||
                     name.StartsWith("shrub") ||
                     name.Contains("_bush") ||
                     name.Contains("vines") ||
-                    name.StartsWith("Beech_Sapling") ||
-                    name.StartsWith("FirTree_Sapling") ||
-                    name.StartsWith("Pickable_Branch"))
+                    name.StartsWith("beech_sapling") ||
+                    name.StartsWith("firtree_sapling") ||
+                    name.StartsWith("pickable_branch"))
                 {
                     return true;
                 }
@@ -143,12 +143,16 @@ namespace StartingClassMod
 
         public override bool IsDone()
         {
-            return !BladeDance.IsActive();
+            var player = m_character as Player;
+            if (player == null) return true;
+            return BladeDance.GetTimeRemaining(player) <= 0f;
         }
 
         public override string GetIconText()
         {
-            float remaining = BladeDance.GetTimeRemaining();
+            var player = m_character as Player;
+            if (player == null) return "";
+            float remaining = BladeDance.GetTimeRemaining(player);
             if (remaining > 0f)
                 return StatusEffect.GetTimeString(remaining);
             return "";

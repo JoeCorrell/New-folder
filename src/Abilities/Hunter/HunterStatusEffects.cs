@@ -11,9 +11,6 @@ namespace StartingClassMod
     /// </summary>
     public class SE_Survivalist : StatusEffect
     {
-        // Base stamina regen rate in Valheim is ~6/sec
-        private const float BaseStaminaRegen = 6f;
-        private const float StaminaRegenBonus = 0.15f;
         private const float BiomeCheckInterval = 0.5f;
 
         private float _biomeCheckTimer;
@@ -33,10 +30,7 @@ namespace StartingClassMod
             base.UpdateStatusEffect(dt);
             if (m_character == null) return;
 
-            var player = m_character as Player;
-            if (player == null) return;
-
-            // Cache biome check to avoid per-frame Heightmap lookup
+            // Cache biome check every 0.5s to avoid per-frame Heightmap lookup
             _biomeCheckTimer -= dt;
             if (_biomeCheckTimer <= 0f)
             {
@@ -44,11 +38,14 @@ namespace StartingClassMod
                 Heightmap.Biome biome = Heightmap.FindBiome(m_character.transform.position);
                 _inBonusBiome = biome == Heightmap.Biome.Meadows || biome == Heightmap.Biome.BlackForest;
             }
+        }
 
+        // Hooks into Player's stamina regen calculation: staminaRegen starts at 1f,
+        // regen is multiplied by this value, so *1.15 = +15%.
+        public override void ModifyStaminaRegen(ref float staminaRegen)
+        {
             if (_inBonusBiome)
-            {
-                player.AddStamina(BaseStaminaRegen * StaminaRegenBonus * dt);
-            }
+                staminaRegen *= 1.15f;
         }
 
         public override string GetIconText() => "";
@@ -95,12 +92,16 @@ namespace StartingClassMod
 
         public override bool IsDone()
         {
-            return !Pathfinder.IsActive();
+            var player = m_character as Player;
+            if (player == null) return true;
+            return Pathfinder.GetTimeRemaining(player) <= 0f;
         }
 
         public override string GetIconText()
         {
-            float remaining = Pathfinder.GetTimeRemaining();
+            var player = m_character as Player;
+            if (player == null) return "";
+            float remaining = Pathfinder.GetTimeRemaining(player);
             if (remaining > 0f)
                 return StatusEffect.GetTimeString(remaining);
             return "";
