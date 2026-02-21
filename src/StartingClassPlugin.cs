@@ -46,8 +46,11 @@ namespace StartingClassMod
                     ShowClassSelection(true);
             }
 
-            // Update tracked enemy marks each frame
+            // Update active abilities each frame
             MarkedByFate.UpdateMarks();
+            BladeDance.UpdateBladeDance();
+            HuntersInstinct.UpdateMarks();
+            Pathfinder.UpdatePathfinder();
         }
 
         private void OnDestroy()

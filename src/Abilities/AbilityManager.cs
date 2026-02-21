@@ -133,7 +133,9 @@ namespace StartingClassMod
                 case "Assassin":
                     ApplyAssassinAbility(player, abilityIndex);
                     break;
-                // Other classes will be added here
+                case "Hunter":
+                    ApplyHunterAbility(player, abilityIndex);
+                    break;
             }
         }
 
@@ -148,7 +150,8 @@ namespace StartingClassMod
                     // Killing Edge (passive) — handled via Harmony patch, no SE needed
                     break;
                 case 1:
-                    // Marked by Fate — activated via V key, managed by MarkedByFate class
+                    // Marked by Fate — restore HUD SE if still active from previous session
+                    MarkedByFate.RestoreIfActive(player);
                     break;
                 case 2:
                     // Shadow Step — apply persistent SE
@@ -163,7 +166,39 @@ namespace StartingClassMod
                     ApplySE<SE_GhostStride>(seman, "SE_GhostStride");
                     break;
                 case 5:
-                    // Blade Dance — activated via G key, managed by BladeDance class
+                    // Blade Dance — restore HUD SE if still active from previous session
+                    BladeDance.RestoreIfActive(player);
+                    break;
+            }
+        }
+
+        private static void ApplyHunterAbility(Player player, int abilityIndex)
+        {
+            var seman = player.GetSEMan();
+            if (seman == null) return;
+
+            switch (abilityIndex)
+            {
+                case 0:
+                    // Predator's Mark (passive) — handled via Harmony patch, no SE needed
+                    break;
+                case 1:
+                    // Hunter's Instinct — restore HUD SE if still active from previous session
+                    HuntersInstinct.RestoreIfActive(player);
+                    break;
+                case 2:
+                    // Keen Eye (passive) — handled via Harmony patch, no SE needed
+                    break;
+                case 3:
+                    // Survivalist — apply persistent SE
+                    ApplySE<SE_Survivalist>(seman, "SE_Survivalist");
+                    break;
+                case 4:
+                    // Thick Hide (passive) — handled via Harmony patch, no SE needed
+                    break;
+                case 5:
+                    // Pathfinder — restore HUD SE if still active from previous session
+                    Pathfinder.RestoreIfActive(player);
                     break;
             }
         }

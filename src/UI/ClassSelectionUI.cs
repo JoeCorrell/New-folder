@@ -2242,6 +2242,9 @@ namespace StartingClassMod
             string playerClass = ClassPersistence.GetSelectedClassName(player);
             string activePower = ActivePowerManager.GetActivePower(player);
 
+            // Show abilities for the browsed class (left panel selection), not just the player's class
+            string browsedClass = (_selectedIndex >= 0 && _selectedIndex < _classes.Count) ? _classes[_selectedIndex].Name : null;
+
             // Clear old entries
             foreach (var entry in _powerEntries)
             {
@@ -2282,26 +2285,29 @@ namespace StartingClassMod
                 entryIndex++;
             }
 
-            // Class ability entries
-            if (!string.IsNullOrEmpty(playerClass))
+            // Class ability entries — show for the browsed class
+            string displayClass = browsedClass ?? playerClass;
+            if (!string.IsNullOrEmpty(displayClass))
             {
-                StartingClass playerCls = null;
+                StartingClass displayCls = null;
                 foreach (var c in _classes)
                 {
-                    if (c.Name == playerClass) { playerCls = c; break; }
+                    if (c.Name == displayClass) { displayCls = c; break; }
                 }
 
-                if (playerCls != null && playerCls.Abilities != null)
+                if (displayCls != null && displayCls.Abilities != null)
                 {
-                    for (int i = 0; i < playerCls.Abilities.Count; i++)
+                    bool isOwnClass = displayClass == playerClass;
+                    for (int i = 0; i < displayCls.Abilities.Count; i++)
                     {
-                        var ability = playerCls.Abilities[i];
+                        var ability = displayCls.Abilities[i];
                         if (ability.IsPassive) continue;
 
-                        string powerId = GetPowerIdForAbility(playerCls.Name, i);
+                        string powerId = GetPowerIdForAbility(displayCls.Name, i);
                         if (powerId == null) continue;
 
-                        bool unlocked = AbilityManager.IsAbilityUnlocked(player, playerCls.Name, i);
+                        // Only unlocked/selectable if it's the player's own class
+                        bool unlocked = isOwnClass && AbilityManager.IsAbilityUnlocked(player, displayCls.Name, i);
                         bool isCurrent = unlocked && activePower == powerId;
                         Sprite abilityIcon = TextureLoader.LoadAbilitySprite(powerId);
                         var entry = CreatePowerEntryFromPrefab(invGui, powerId, ability.Name, abilityIcon, unlocked, isCurrent, entryIndex, spacing, rowHeight, descImg);
@@ -2493,6 +2499,11 @@ namespace StartingClassMod
             {
                 if (abilityIndex == 1) return "MarkedByFate";
                 if (abilityIndex == 5) return "BladeDance";
+            }
+            if (className == "Hunter")
+            {
+                if (abilityIndex == 1) return "HuntersInstinct";
+                if (abilityIndex == 5) return "Pathfinder";
             }
             return null;
         }

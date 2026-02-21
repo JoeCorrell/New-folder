@@ -104,9 +104,12 @@ namespace StartingClassMod
                         seman.RemoveStatusEffect("SE_ShadowStep".GetStableHashCode());
                         seman.RemoveStatusEffect("SE_NaturesShroud".GetStableHashCode());
                         seman.RemoveStatusEffect("SE_GhostStride".GetStableHashCode());
+                        seman.RemoveStatusEffect("SE_Survivalist".GetStableHashCode());
                     }
                     MarkedByFate.ClearAllMarks();
                     BladeDance.Reset();
+                    HuntersInstinct.ClearAllMarks();
+                    Pathfinder.ClearAll();
                     ClassPersistence.ClearAllData(player);
                     terminal.AddString("StartingClass: Cleared class data. Opening selection menu...");
                 }
@@ -177,9 +180,12 @@ namespace StartingClassMod
                     seman.RemoveStatusEffect("SE_ShadowStep".GetStableHashCode());
                     seman.RemoveStatusEffect("SE_NaturesShroud".GetStableHashCode());
                     seman.RemoveStatusEffect("SE_GhostStride".GetStableHashCode());
+                    seman.RemoveStatusEffect("SE_Survivalist".GetStableHashCode());
                 }
                 MarkedByFate.ClearAllMarks();
                 BladeDance.Reset();
+                HuntersInstinct.ClearAllMarks();
+                Pathfinder.ClearAll();
                 ActivePowerManager.SetActivePower(player, ActivePowerManager.Forsaken);
 
                 terminal.AddString($"StartingClass: Reset all abilities for {className}. Refunded {refunded} skill points.");
@@ -197,6 +203,8 @@ namespace StartingClassMod
                 StartingClassPlugin.Instance?.HideClassSelection();
                 MarkedByFate.ClearAllMarks();
                 BladeDance.Reset();
+                HuntersInstinct.ClearAllMarks();
+                Pathfinder.ClearAll();
                 AbilityHud.Destroy();
             }
         }
@@ -342,6 +350,12 @@ namespace StartingClassMod
                         break;
                     case "BladeDance":
                         BladeDance.TryActivate(__instance);
+                        break;
+                    case "HuntersInstinct":
+                        HuntersInstinct.TryActivate(__instance);
+                        break;
+                    case "Pathfinder":
+                        Pathfinder.TryActivate(__instance);
                         break;
                 }
 

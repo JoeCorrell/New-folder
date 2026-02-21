@@ -73,6 +73,13 @@ namespace StartingClassMod
             return remaining > 0f ? remaining : 0f;
         }
 
+        /// <summary>Restore HUD status effect if the ability is still active (e.g. after login).</summary>
+        public static void RestoreIfActive(Player player)
+        {
+            if (player == null || !IsActive(player)) return;
+            AddHudStatusEffect(player);
+        }
+
         /// <summary>Activate: begin continuous scanning. Called from GP intercept.</summary>
         public static void TryActivate(Player player)
         {
@@ -186,11 +193,12 @@ namespace StartingClassMod
                     ScanAndMark(player);
                 }
             }
-            else if (player != null && _activeMarks.Count > 0 && GetDurationRemaining(player) <= 0f
+            else if (player != null && GetDurationRemaining(player) <= 0f
                      && player.m_customData.ContainsKey(DurationKey))
             {
-                // Duration just expired — clear all marks
-                ClearAllMarks();
+                // Duration just expired — clear remaining marks and clean up
+                if (_activeMarks.Count > 0)
+                    ClearAllMarks();
                 player.m_customData.Remove(DurationKey);
                 player.Message(MessageHud.MessageType.Center, "Marked by Fate expired");
                 return;

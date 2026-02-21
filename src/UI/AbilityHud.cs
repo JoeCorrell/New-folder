@@ -70,6 +70,12 @@ namespace StartingClassMod
                 case "BladeDance":
                     UpdateBladeDanceHud(player, hud);
                     break;
+                case "HuntersInstinct":
+                    UpdateHuntersInstinctHud(player, hud);
+                    break;
+                case "Pathfinder":
+                    UpdatePathfinderHud(player, hud);
+                    break;
             }
         }
 
@@ -152,6 +158,85 @@ namespace StartingClassMod
             }
         }
 
+        private static void UpdateHuntersInstinctHud(Player player, Hud hud)
+        {
+            if (hud.m_gpName != null)
+                hud.m_gpName.text = "Hunter's Instinct";
+
+            if (hud.m_gpCooldown != null)
+            {
+                hud.m_gpCooldown.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
+                hud.m_gpCooldown.overflowMode = TMPro.TextOverflowModes.Overflow;
+
+                if (HuntersInstinct.IsActive(player))
+                {
+                    float dur = HuntersInstinct.GetDurationRemaining(player);
+                    int marks = HuntersInstinct.GetActiveMarkCount();
+                    hud.m_gpCooldown.text = $"{StatusEffect.GetTimeString(dur)} ({marks})";
+                    hud.m_gpCooldown.color = Color.white;
+                    if (hud.m_gpIcon != null)
+                        hud.m_gpIcon.color = Color.white;
+                }
+                else
+                {
+                    float cd = HuntersInstinct.GetCooldownRemaining(player);
+                    if (cd > 0f)
+                    {
+                        hud.m_gpCooldown.text = StatusEffect.GetTimeString(cd);
+                        hud.m_gpCooldown.color = new Color(0.6f, 0.6f, 0.6f, 1f);
+                        if (hud.m_gpIcon != null)
+                            hud.m_gpIcon.color = CooldownTint;
+                    }
+                    else
+                    {
+                        hud.m_gpCooldown.text = "Ready";
+                        hud.m_gpCooldown.color = Color.white;
+                        if (hud.m_gpIcon != null)
+                            hud.m_gpIcon.color = Color.white;
+                    }
+                }
+            }
+        }
+
+        private static void UpdatePathfinderHud(Player player, Hud hud)
+        {
+            if (hud.m_gpName != null)
+                hud.m_gpName.text = "Pathfinder";
+
+            if (hud.m_gpCooldown != null)
+            {
+                hud.m_gpCooldown.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
+                hud.m_gpCooldown.overflowMode = TMPro.TextOverflowModes.Overflow;
+
+                if (Pathfinder.IsActive())
+                {
+                    float remaining = Pathfinder.GetTimeRemaining();
+                    hud.m_gpCooldown.text = $"{remaining:0}s";
+                    hud.m_gpCooldown.color = Color.white;
+                    if (hud.m_gpIcon != null)
+                        hud.m_gpIcon.color = Color.white;
+                }
+                else
+                {
+                    float cd = Pathfinder.GetCooldownRemaining(player);
+                    if (cd > 0f)
+                    {
+                        hud.m_gpCooldown.text = StatusEffect.GetTimeString(cd);
+                        hud.m_gpCooldown.color = new Color(0.6f, 0.6f, 0.6f, 1f);
+                        if (hud.m_gpIcon != null)
+                            hud.m_gpIcon.color = CooldownTint;
+                    }
+                    else
+                    {
+                        hud.m_gpCooldown.text = "Ready";
+                        hud.m_gpCooldown.color = Color.white;
+                        if (hud.m_gpIcon != null)
+                            hud.m_gpIcon.color = Color.white;
+                    }
+                }
+            }
+        }
+
         /// <summary>Clean up when logging out.</summary>
         public static void Destroy()
         {
@@ -161,15 +246,29 @@ namespace StartingClassMod
             _spriteCache.Clear();
         }
 
+        private static string _loadedClass;
+
         private static void EnsureIconsLoaded(string className)
         {
-            if (_spriteCache.Count > 0) return;
+            // Reload if class changed (e.g., player reset and chose a different class)
+            if (_loadedClass == className && _spriteCache.Count > 0) return;
+
+            _spriteCache.Clear();
+            if (_placeholderTex != null)
+            {
+                Object.Destroy(_placeholderTex);
+                _placeholderTex = null;
+            }
+            _loadedClass = className;
 
             string[] iconNames;
             switch (className)
             {
                 case "Assassin":
                     iconNames = new[] { "MarkedByFate", "BladeDance" };
+                    break;
+                case "Hunter":
+                    iconNames = new[] { "HuntersInstinct", "Pathfinder" };
                     break;
                 default:
                     iconNames = new string[0];

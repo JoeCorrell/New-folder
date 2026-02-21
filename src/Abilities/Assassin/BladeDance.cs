@@ -57,6 +57,13 @@ namespace StartingClassMod
             return remaining > 0 ? (float)remaining : 0f;
         }
 
+        /// <summary>Restore HUD status effect if the ability is still active (e.g. after login).</summary>
+        public static void RestoreIfActive(Player player)
+        {
+            if (player == null || !IsActive()) return;
+            AddHudStatusEffect(player);
+        }
+
         /// <summary>Try to activate Blade Dance. Called from GP intercept.</summary>
         public static void TryActivate(Player player)
         {
@@ -83,6 +90,19 @@ namespace StartingClassMod
             PlayActivateEffects(player);
             AddHudStatusEffect(player);
             StartingClassPlugin.Log("Blade Dance activated.");
+        }
+
+        /// <summary>Called each frame from plugin Update to handle expiry.</summary>
+        public static void UpdateBladeDance()
+        {
+            var player = Player.m_localPlayer;
+            if (player == null) return;
+
+            if (!IsActive() && player.m_customData.ContainsKey(DurationKey))
+            {
+                player.m_customData.Remove(DurationKey);
+                player.Message(MessageHud.MessageType.Center, "Blade Dance expired");
+            }
         }
 
         /// <summary>Clear active state (for logout).</summary>
