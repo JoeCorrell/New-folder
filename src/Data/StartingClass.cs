@@ -64,13 +64,21 @@ namespace StartingClassMod
         public string Description { get; }
         public bool IsPassive { get; }
         public int PointCost { get; }
+        /// <summary>
+        /// Explicit index used for m_customData persistence keys.
+        /// When abilities are removed from the list, this preserves save compatibility.
+        /// -1 means "use list index" (default for unchanged classes).
+        /// </summary>
+        public int PersistenceIndex { get; }
 
-        public ClassAbility(string name, string description, bool isPassive, int pointCost = 0)
+        public ClassAbility(string name, string description, bool isPassive,
+                            int pointCost = 0, int persistenceIndex = -1)
         {
             Name = name;
             Description = description;
             IsPassive = isPassive;
             PointCost = pointCost;
+            PersistenceIndex = persistenceIndex;
         }
     }
 }

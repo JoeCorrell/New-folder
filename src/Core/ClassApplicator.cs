@@ -20,9 +20,7 @@ namespace StartingClassMod
         {
             if (player == null || startingClass == null) return;
 
-            // Remove any persistent SEs and active ability state from a previous class.
-            // Without this, switching class leaves old SEs (ShadowStep, Survivalist, etc.)
-            // permanently active, and active abilities (MarkedByFate etc.) keep running.
+            // Remove any persistent SEs and equip state from a previous class.
             var seman = player.GetSEMan();
             if (seman != null)
             {
@@ -31,8 +29,9 @@ namespace StartingClassMod
                 seman.RemoveStatusEffect("SE_GhostStride".GetStableHashCode());
                 seman.RemoveStatusEffect("SE_Survivalist".GetStableHashCode());
             }
-            ActiveAbilityRegistry.ForceDeactivateAll(player);
-            ActivePowerManager.SetActivePower(player, ActivePowerManager.Forsaken);
+            player.m_customData.Remove("StartingClassMod_Equipped_0");
+            player.m_customData.Remove("StartingClassMod_Equipped_1");
+            player.m_customData.Remove("StartingClassMod_SkillXP");
 
             // Mark as pending before we start applying (crash safety)
             ClassPersistence.SetPending(player);

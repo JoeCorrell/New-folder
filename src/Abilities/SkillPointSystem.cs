@@ -1,15 +1,42 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace StartingClassMod
 {
     /// <summary>
-    /// Manages skill point earning and spending.
-    /// Points are earned from kills (scaled by enemy health) and class skill levelups.
-    /// Balance is persisted in Player.m_customData.
+    /// Manages skill point earning via class-specific XP accumulation.
+    /// Assassin: XP from killing enemies while wearing full troll leather armor.
+    /// Hunter: XP from killing animals.
+    /// Boss first-kills award 2 skill points directly (once per boss).
     /// </summary>
     public static class SkillPointSystem
     {
         private const string PointsKey = "StartingClassMod_SkillPoints";
+        private const string XPKey = "StartingClassMod_SkillXP";
+        private const string BossKeyPrefix = "StartingClassMod_Boss_";
+        private const int XPThreshold = 100;
+
+        // ── Troll leather set (Assassin XP requirement) ──────────────────────
+
+        private static readonly HashSet<string> TrollLeatherSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "HelmetTrollLeather", "ArmorTrollLeatherChest",
+            "ArmorTrollLeatherLegs", "CapeTrollHide"
+        };
+
+        // ── Animal XP values (Hunter) ────────────────────────────────────────
+
+        private static readonly Dictionary<string, int> AnimalXP = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "Boar", 1 }, { "Boar_piggy", 1 }, { "Neck", 1 },
+            { "Hare", 1 }, { "Hen", 1 }, { "Chicken", 1 },
+            { "Deer", 2 }, { "Wolf_cub", 2 }, { "Tick", 2 },
+            { "Wolf", 3 }, { "Lox_Calf", 3 },
+            { "Serpent", 5 }, { "Lox", 5 }
+        };
+
+        // ── Points API (unchanged) ───────────────────────────────────────────
 
         public static int GetPoints(Player player)
         {
@@ -37,72 +64,109 @@ namespace StartingClassMod
         public static bool SpendPoints(Player player, int cost)
         {
             if (player == null || cost < 0) return false;
-            if (cost == 0) return true; // Free abilities always succeed
+            if (cost == 0) return true;
             int current = GetPoints(player);
             if (current < cost) return false;
             player.m_customData[PointsKey] = (current - cost).ToString();
             return true;
         }
 
+        // ── XP API ───────────────────────────────────────────────────────────
+
+        public static int GetXP(Player player)
+        {
+            if (player == null) return 0;
+            if (player.m_customData.TryGetValue(XPKey, out string val) && int.TryParse(val, out int xp))
+                return xp;
+            return 0;
+        }
+
         /// <summary>
-        /// Called when a creature dies. Awards points to the killer based on enemy max health.
+        /// Add XP and auto-convert to skill points at threshold.
+        /// Shows notification messages for XP gains and skill point rewards.
+        /// </summary>
+        public static void AddXP(Player player, int xp, string className)
+        {
+            if (player == null || xp <= 0) return;
+
+            int current = GetXP(player);
+            int newXP = current + xp;
+
+            player.Message(MessageHud.MessageType.Center, $"+{xp} XP ({className})");
+
+            while (newXP >= XPThreshold)
+            {
+                newXP -= XPThreshold;
+                AddPoints(player, 1);
+                player.Message(MessageHud.MessageType.Center, "Skill Point earned!");
+            }
+
+            player.m_customData[XPKey] = newXP.ToString();
+        }
+
+        // ── Kill handler ─────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Called when a creature dies. Awards class-specific XP and boss first-kill bonuses.
         /// </summary>
         public static void OnEnemyKilled(Character enemy, Player killer)
         {
             if (enemy == null || killer == null) return;
             if (!ClassPersistence.HasSelectedClass(killer)) return;
 
-            float maxHp = enemy.GetMaxHealth();
-            int points = Mathf.Max(1, Mathf.RoundToInt(maxHp / 50f));
+            string className = ClassPersistence.GetSelectedClassName(killer);
 
-            // Boss kills grant a large bonus
+            // Boss first-kill: 2 skill points (any class, once per boss)
             if (enemy.IsBoss())
-                points += 10;
-
-            AddPoints(killer, points);
-            killer.Message(MessageHud.MessageType.TopLeft, $"+ {points} Skill Points");
-        }
-
-        /// <summary>
-        /// Called when a skill levels up. Awards bonus points for class-relevant skills.
-        /// </summary>
-        public static void OnSkillLevelup(Player player, Skills.SkillType skill)
-        {
-            if (player == null) return;
-            string className = ClassPersistence.GetSelectedClassName(player);
-            if (string.IsNullOrEmpty(className)) return;
-
-            if (!IsClassSkill(className, skill)) return;
-
-            int bonus = 2;
-            AddPoints(player, bonus);
-            player.Message(MessageHud.MessageType.TopLeft, $"+ {bonus} Skill Points (skill levelup)");
-        }
-
-        /// <summary>Returns true if the given skill type is relevant to the player's class.</summary>
-        private static bool IsClassSkill(string className, Skills.SkillType skill)
-        {
-            switch (className)
             {
-                case "Assassin":
-                    return skill == Skills.SkillType.Sneak || skill == Skills.SkillType.Knives;
-                case "Archer":
-                    return skill == Skills.SkillType.Bows;
-                case "Builder":
-                    return skill == Skills.SkillType.WoodCutting || skill == Skills.SkillType.Axes;
-                case "Explorer":
-                    return skill == Skills.SkillType.Run;
-                case "Farmer":
-                    return skill == Skills.SkillType.Blocking || skill == Skills.SkillType.Run;
-                case "Healer":
-                    return skill == Skills.SkillType.BloodMagic;
-                case "Hunter":
-                    return skill == Skills.SkillType.Bows || skill == Skills.SkillType.Sneak;
-                case "Miner":
-                    return skill == Skills.SkillType.Pickaxes || skill == Skills.SkillType.Blocking;
-                default:
+                string bossName = Utils.GetPrefabName(enemy.gameObject.name);
+                string bossKey = BossKeyPrefix + bossName;
+                if (!killer.m_customData.ContainsKey(bossKey))
+                {
+                    killer.m_customData[bossKey] = "1";
+                    AddPoints(killer, 2);
+                    killer.Message(MessageHud.MessageType.Center, "+2 Skill Points (Boss defeated!)");
+                }
+            }
+
+            // Class-specific XP
+            int xp = 0;
+
+            if (className == "Assassin")
+            {
+                if (IsWearingFullTrollLeather(killer))
+                    xp = Mathf.Max(1, Mathf.CeilToInt(enemy.GetMaxHealth() / 200f));
+            }
+            else if (className == "Hunter")
+            {
+                string prefabName = Utils.GetPrefabName(enemy.gameObject.name);
+                if (AnimalXP.TryGetValue(prefabName, out int animalXp))
+                    xp = animalXp;
+            }
+
+            if (xp > 0)
+                AddXP(killer, xp, className);
+        }
+
+        // ── Helpers ──────────────────────────────────────────────────────────
+
+        private static bool IsWearingFullTrollLeather(Player player)
+        {
+            if (player == null) return false;
+
+            var equipped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in player.GetInventory().GetEquippedItems())
+            {
+                if (item.m_dropPrefab != null)
+                    equipped.Add(item.m_dropPrefab.name);
+            }
+
+            foreach (string piece in TrollLeatherSet)
+            {
+                if (!equipped.Contains(piece))
                     return false;
             }
+            return true;
         }
     }
 }

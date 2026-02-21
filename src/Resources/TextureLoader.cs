@@ -72,6 +72,46 @@ namespace StartingClassMod
         }
 
         /// <summary>
+        /// Load a UI texture by name (e.g. "PanelBackground").
+        /// Resources are at: StartingClassMod.Resources.Textures.UI.{Name}.png
+        /// </summary>
+        public static Texture2D LoadUITexture(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return null;
+
+            string cacheKey = "UI_" + name;
+            if (Cache.TryGetValue(cacheKey, out Texture2D cached))
+                return cached;
+
+            if (LoadImageMethod == null) return null;
+
+            string resourceName = $"StartingClassMod.Resources.Textures.UI.{name}.png";
+            using (Stream stream = ModAssembly.GetManifestResourceStream(resourceName))
+            {
+                if (stream == null)
+                {
+                    StartingClassPlugin.LogWarning($"TextureLoader: UI resource '{resourceName}' not found.");
+                    return null;
+                }
+
+                byte[] data = new byte[stream.Length];
+                stream.Read(data, 0, data.Length);
+
+                var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                bool loaded = (bool)LoadImageMethod.Invoke(null, new object[] { tex, data });
+                if (loaded)
+                {
+                    tex.name = name;
+                    Cache[cacheKey] = tex;
+                    return tex;
+                }
+
+                UnityEngine.Object.Destroy(tex);
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Create (or return cached) a Sprite from a loaded ability icon texture.
         /// Sprites are cached for the session lifetime so multiple callers share the same object.
         /// </summary>

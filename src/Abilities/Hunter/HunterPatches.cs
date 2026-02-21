@@ -3,10 +3,10 @@ using HarmonyLib;
 namespace StartingClassMod
 {
     /// <summary>
-    /// Harmony patches for Hunter class passive abilities:
-    /// - Predator's Mark (idx 0): +15% damage to creatures
-    /// - Keen Eye (idx 2): +15% bow/spear damage
-    /// - Thick Hide (idx 4): -15% damage from creature attacks (not players/bosses)
+    /// Harmony patches for Hunter class passive skills:
+    /// - Predator's Mark (idx 0): +15% damage to creatures (when equipped)
+    /// - Keen Eye (idx 2): +15% bow/spear damage (when equipped)
+    /// - Thick Hide (idx 4): -15% damage from creature attacks (when equipped)
     /// </summary>
     public static class HunterPatches
     {
@@ -28,14 +28,14 @@ namespace StartingClassMod
                 // === Offensive passives: attacker is the Hunter player ===
                 if (attacker == localPlayer)
                 {
-                    // Predator's Mark (idx 0): +15% damage to creatures
-                    if (!__instance.IsPlayer() && AbilityManager.IsAbilityUnlocked(localPlayer, "Hunter", 0))
+                    // Predator's Mark (persistence idx 0): +15% damage to creatures
+                    if (!__instance.IsPlayer() && AbilityManager.IsSkillEquipped(localPlayer, "Hunter", 0))
                     {
                         hit.m_damage.Modify(1.15f);
                     }
 
-                    // Keen Eye (idx 2): +15% bow and spear damage
-                    if (AbilityManager.IsAbilityUnlocked(localPlayer, "Hunter", 2))
+                    // Keen Eye (persistence idx 2): +15% bow and spear damage
+                    if (AbilityManager.IsSkillEquipped(localPlayer, "Hunter", 2))
                     {
                         var skill = localPlayer.GetCurrentWeapon()?.m_shared?.m_skillType;
                         if (skill == Skills.SkillType.Bows || skill == Skills.SkillType.Spears)
@@ -46,9 +46,9 @@ namespace StartingClassMod
                 // === Defensive passive: target is the Hunter player ===
                 if (__instance == localPlayer && attacker != null)
                 {
-                    // Thick Hide (idx 4): -15% damage from creatures (not players or bosses)
+                    // Thick Hide (persistence idx 4): -15% damage from creatures (not players or bosses)
                     if (!attacker.IsPlayer() && !attacker.m_boss &&
-                        AbilityManager.IsAbilityUnlocked(localPlayer, "Hunter", 4))
+                        AbilityManager.IsSkillEquipped(localPlayer, "Hunter", 4))
                     {
                         hit.m_damage.Modify(0.85f);
                     }

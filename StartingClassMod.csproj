@@ -94,6 +94,7 @@
   <!-- Embed texture resources into the DLL -->
   <ItemGroup>
     <EmbeddedResource Include="src\Resources\Textures\Abilities\*.png" LogicalName="StartingClassMod.Resources.Textures.Abilities.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="src\Resources\Textures\UI\*.png" LogicalName="StartingClassMod.Resources.Textures.UI.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <!-- Auto-deploy to BepInEx plugins folder after every build -->

@@ -21,12 +21,6 @@ namespace StartingClassMod
             _harmony = new Harmony(PluginGUID);
             _harmony.PatchAll();
 
-            // Register active abilities with the central registry
-            MarkedByFate.Register();
-            BladeDance.Register();
-            HuntersInstinct.Register();
-            Pathfinder.Register();
-
             Logger.LogInfo($"{PluginName} v{PluginVersion} loaded.");
         }
 
@@ -52,9 +46,6 @@ namespace StartingClassMod
                 else
                     ShowClassSelection(true);
             }
-
-            // Update all registered active abilities each frame
-            ActiveAbilityRegistry.UpdateAll();
         }
 
         private void OnDestroy()

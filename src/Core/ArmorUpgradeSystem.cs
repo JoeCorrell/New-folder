@@ -21,8 +21,8 @@ namespace StartingClassMod
     public static class ArmorUpgradeSystem
     {
         public const int MaxLevel = 5;
-        public const int CostPerLevel = 0;
         public const float BonusPerLevel = 2f;
+        public const int UpgradeCost = 1;
 
         private const string KeyPrefix = "StartingClassMod_SetLevel_";
 
@@ -127,7 +127,7 @@ namespace StartingClassMod
             int current = GetSetLevel(player, set);
             if (current >= MaxLevel) return false;
 
-            if (!SkillPointSystem.SpendPoints(player, CostPerLevel)) return false;
+            if (!SkillPointSystem.SpendPoints(player, UpgradeCost)) return false;
 
             player.m_customData[KeyPrefix + set.Id] = (current + 1).ToString();
             StartingClassPlugin.Log($"Armor set enhanced: {set.DisplayName} to level {current + 1}");
