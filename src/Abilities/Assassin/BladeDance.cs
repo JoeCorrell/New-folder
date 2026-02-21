@@ -1,5 +1,3 @@
-using System.Reflection;
-using HarmonyLib;
 using UnityEngine;
 
 namespace StartingClassMod
@@ -17,11 +15,6 @@ namespace StartingClassMod
         private const string CooldownKey = "StartingClassMod_BladeDance_CD";
         private const string DurationKey = "StartingClassMod_BladeDance_End";
 
-        // Cached reflection for non-public fields
-        private static readonly FieldInfo ZanimField =
-            AccessTools.Field(typeof(Character), "m_zanim");
-        private static readonly FieldInfo GuardianSEField =
-            AccessTools.Field(typeof(Player), "m_guardianSE");
 
         /// <summary>Whether the damage buff is currently active.</summary>
         public static bool IsActive()
@@ -125,15 +118,7 @@ namespace StartingClassMod
 
         private static void PlayActivateEffects(Player player)
         {
-            // Trigger the raise-hands animation
-            var zanim = ZanimField?.GetValue(player) as ZSyncAnimation;
-            if (zanim != null)
-                zanim.SetTrigger("gpower");
-
-            // Play the forsaken power's start effects (sound + visuals)
-            var guardianSE = GuardianSEField?.GetValue(player) as StatusEffect;
-            if (guardianSE != null && guardianSE.m_startEffects != null)
-                guardianSE.m_startEffects.Create(player.GetCenterPoint(), player.transform.rotation, player.transform);
+            AbilityEffects.PlayActivation(player);
         }
 
         private static void AddHudStatusEffect(Player player)

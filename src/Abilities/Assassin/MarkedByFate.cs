@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using HarmonyLib;
 using UnityEngine;
 
 namespace StartingClassMod
@@ -32,11 +31,6 @@ namespace StartingClassMod
 
         private static readonly List<Mark> _activeMarks = new List<Mark>();
 
-        // Reflection fields for activation effects
-        private static readonly System.Reflection.FieldInfo ZanimField =
-            AccessTools.Field(typeof(Character), "m_zanim");
-        private static readonly System.Reflection.FieldInfo GuardianSEField =
-            AccessTools.Field(typeof(Player), "m_guardianSE");
 
         /// <summary>Number of enemies currently marked.</summary>
         public static int GetActiveMarkCount() => _activeMarks.Count;
@@ -159,15 +153,7 @@ namespace StartingClassMod
 
         private static void PlayActivateEffects(Player player)
         {
-            // Trigger gpower animation (raises hands)
-            var zanim = ZanimField?.GetValue(player) as ZSyncAnimation;
-            if (zanim != null)
-                zanim.SetTrigger("gpower");
-
-            // Play the forsaken power's start effects (sound + visuals)
-            var guardianSE = GuardianSEField?.GetValue(player) as StatusEffect;
-            if (guardianSE != null && guardianSE.m_startEffects != null)
-                guardianSE.m_startEffects.Create(player.GetCenterPoint(), player.transform.rotation, player.transform);
+            AbilityEffects.PlayActivation(player);
         }
 
         /// <summary>Check if a specific character is currently marked.</summary>

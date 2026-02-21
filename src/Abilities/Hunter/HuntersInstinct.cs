@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using HarmonyLib;
 using UnityEngine;
 
 namespace StartingClassMod
@@ -32,10 +31,6 @@ namespace StartingClassMod
 
         private static readonly List<Mark> _activeMarks = new List<Mark>();
 
-        private static readonly System.Reflection.FieldInfo ZanimField =
-            AccessTools.Field(typeof(Character), "m_zanim");
-        private static readonly System.Reflection.FieldInfo GuardianSEField =
-            AccessTools.Field(typeof(Player), "m_guardianSE");
 
         public static int GetActiveMarkCount() => _activeMarks.Count;
 
@@ -142,13 +137,7 @@ namespace StartingClassMod
 
         private static void PlayActivateEffects(Player player)
         {
-            var zanim = ZanimField?.GetValue(player) as ZSyncAnimation;
-            if (zanim != null)
-                zanim.SetTrigger("gpower");
-
-            var guardianSE = GuardianSEField?.GetValue(player) as StatusEffect;
-            if (guardianSE != null && guardianSE.m_startEffects != null)
-                guardianSE.m_startEffects.Create(player.GetCenterPoint(), player.transform.rotation, player.transform);
+            AbilityEffects.PlayActivation(player);
         }
 
         public static bool IsMarked(Character character)

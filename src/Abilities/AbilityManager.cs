@@ -113,14 +113,39 @@ namespace StartingClassMod
         /// <summary>
         /// Initialize all ability effects for the player's current class.
         /// Called on class selection and on login (OnSpawned).
+        /// Auto-unlocks any abilities that have zero point cost.
         /// </summary>
         public static void InitializeAbilities(Player player, string className)
         {
             if (player == null || string.IsNullOrEmpty(className)) return;
 
+            // Auto-unlock abilities with zero point cost so players don't need
+            // to click "Unlock" for free abilities.
+            AutoUnlockFreeAbilities(player, className);
+
             var unlocked = GetUnlockedAbilities(player, className);
             foreach (int idx in unlocked)
                 ApplyAbilityEffect(player, className, idx);
+        }
+
+        private static void AutoUnlockFreeAbilities(Player player, string className)
+        {
+            var classes = ClassDefinitions.GetAll();
+            StartingClass cls = null;
+            foreach (var c in classes)
+            {
+                if (c.Name == className) { cls = c; break; }
+            }
+            if (cls?.Abilities == null) return;
+
+            for (int i = 1; i < cls.Abilities.Count && i <= MaxAbilityIndex; i++)
+            {
+                if (cls.Abilities[i].PointCost == 0 && !IsAbilityUnlocked(player, className, i))
+                {
+                    player.m_customData[GetKey(className, i)] = "1";
+                    StartingClassPlugin.Log($"Auto-unlocked free {className} ability index {i}.");
+                }
+            }
         }
 
         /// <summary>Apply the gameplay effect for a specific ability.</summary>

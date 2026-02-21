@@ -1,6 +1,4 @@
 using System.Collections.Generic;
-using System.Reflection;
-using HarmonyLib;
 using UnityEngine;
 
 namespace StartingClassMod
@@ -38,16 +36,17 @@ namespace StartingClassMod
         // Shared material to avoid per-marker material cloning
         private static Material _sharedMarkerMaterial;
 
-        private static readonly FieldInfo ZanimField =
-            AccessTools.Field(typeof(Character), "m_zanim");
-        private static readonly FieldInfo GuardianSEField =
-            AccessTools.Field(typeof(Player), "m_guardianSE");
 
         /// <summary>Known animal/fauna prefab names — includes both passive and hostile fauna.</summary>
         private static readonly HashSet<string> AnimalPrefabs = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase)
         {
-            "Boar", "Deer", "Lox", "Neck", "Wolf", "Hare", "Hen", "Chicken",
-            "Serpent", "Tick", "Crow", "Seagull"
+            "Boar", "Boar_piggy",
+            "Deer",
+            "Lox", "Lox_Calf",
+            "Neck",
+            "Wolf", "Wolf_cub",
+            "Hare", "Hen", "Chicken",
+            "Serpent", "Tick"
         };
 
         public static bool IsActive()
@@ -249,13 +248,7 @@ namespace StartingClassMod
 
         private static void PlayActivateEffects(Player player)
         {
-            var zanim = ZanimField?.GetValue(player) as ZSyncAnimation;
-            if (zanim != null)
-                zanim.SetTrigger("gpower");
-
-            var guardianSE = GuardianSEField?.GetValue(player) as StatusEffect;
-            if (guardianSE != null && guardianSE.m_startEffects != null)
-                guardianSE.m_startEffects.Create(player.GetCenterPoint(), player.transform.rotation, player.transform);
+            AbilityEffects.PlayActivation(player);
         }
 
         private static void AddHudStatusEffect(Player player)
