@@ -107,11 +107,21 @@ namespace StartingClassMod
             }
         }
 
-        /// <summary>Clear active state (for logout).</summary>
-        public static void Reset()
+        /// <summary>
+        /// Full deactivation: removes m_customData keys so the buff immediately stops.
+        /// Use on class switch/reset. On logout, call Reset() instead (keeps cooldown persisted).
+        /// </summary>
+        public static void ForceDeactivate(Player player)
         {
-            // Nothing to reset — state is in m_customData
+            if (player != null)
+            {
+                player.m_customData.Remove(DurationKey);
+                player.m_customData.Remove(CooldownKey);
+            }
         }
+
+        /// <summary>Called on logout — state lives in m_customData, nothing to clean up.</summary>
+        public static void Reset() { }
 
         private static void PlayActivateEffects(Player player)
         {

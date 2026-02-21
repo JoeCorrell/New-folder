@@ -20,6 +20,7 @@ namespace StartingClassMod
         private const float MarkerSpacing = 5f;
         private const float MarkerLifetime = 4f;
         private const float MarkerScale = 0.25f;
+        private const int MaxMarkers = 50;
         private const string CooldownKey = "StartingClassMod_Pathfinder_CD";
         private const string DurationKey = "StartingClassMod_Pathfinder_End";
 
@@ -134,9 +135,11 @@ namespace StartingClassMod
         {
             Vector3 playerPos = player.transform.position;
             List<Character> allChars = Character.GetAllCharacters();
+            int totalMarkers = 0;
 
             foreach (var character in allChars)
             {
+                if (totalMarkers >= MaxMarkers) break;
                 if (character == null || character.IsDead()) continue;
                 if (character.IsPlayer()) continue;
                 if (character.IsTamed()) continue;
@@ -151,7 +154,9 @@ namespace StartingClassMod
                 if (flatDist < MarkerSpacing) continue;
                 direction.Normalize();
 
-                int numMarkers = Mathf.FloorToInt(flatDist / MarkerSpacing);
+                int numMarkers = Mathf.Min(
+                    Mathf.FloorToInt(flatDist / MarkerSpacing),
+                    MaxMarkers - totalMarkers);
 
                 for (int i = 1; i <= numMarkers; i++)
                 {
@@ -159,6 +164,7 @@ namespace StartingClassMod
                     pos = GetGroundPosition(pos);
                     CreateMarker(pos);
                 }
+                totalMarkers += numMarkers;
             }
         }
 
@@ -227,6 +233,21 @@ namespace StartingClassMod
             se.m_ttl = Duration;
             se.m_icon = TextureLoader.LoadAbilitySprite("Pathfinder");
             seman.AddStatusEffect(se);
+        }
+
+        /// <summary>
+        /// Full deactivation: destroys markers, clears shared material, and removes
+        /// m_customData keys so UpdatePathfinder() does not re-spawn trails next frame.
+        /// Use on class switch/reset. On logout, call ClearAll() instead.
+        /// </summary>
+        public static void ForceDeactivate(Player player)
+        {
+            ClearAll();
+            if (player != null)
+            {
+                player.m_customData.Remove(DurationKey);
+                player.m_customData.Remove(CooldownKey);
+            }
         }
 
         /// <summary>Destroy all trail markers and clean up shared resources.</summary>

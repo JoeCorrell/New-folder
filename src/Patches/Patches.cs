@@ -106,10 +106,10 @@ namespace StartingClassMod
                         seman.RemoveStatusEffect("SE_GhostStride".GetStableHashCode());
                         seman.RemoveStatusEffect("SE_Survivalist".GetStableHashCode());
                     }
-                    MarkedByFate.ClearAllMarks();
-                    BladeDance.Reset();
-                    HuntersInstinct.ClearAllMarks();
-                    Pathfinder.ClearAll();
+                    MarkedByFate.ForceDeactivate(player);
+                    BladeDance.ForceDeactivate(player);
+                    HuntersInstinct.ForceDeactivate(player);
+                    Pathfinder.ForceDeactivate(player);
                     ClassPersistence.ClearAllData(player);
                     terminal.AddString("StartingClass: Cleared class data. Opening selection menu...");
                 }
@@ -182,10 +182,10 @@ namespace StartingClassMod
                     seman.RemoveStatusEffect("SE_GhostStride".GetStableHashCode());
                     seman.RemoveStatusEffect("SE_Survivalist".GetStableHashCode());
                 }
-                MarkedByFate.ClearAllMarks();
-                BladeDance.Reset();
-                HuntersInstinct.ClearAllMarks();
-                Pathfinder.ClearAll();
+                MarkedByFate.ForceDeactivate(player);
+                BladeDance.ForceDeactivate(player);
+                HuntersInstinct.ForceDeactivate(player);
+                Pathfinder.ForceDeactivate(player);
                 ActivePowerManager.SetActivePower(player, ActivePowerManager.Forsaken);
 
                 terminal.AddString($"StartingClass: Reset all abilities for {className}. Refunded {refunded} skill points.");
@@ -262,6 +262,7 @@ namespace StartingClassMod
 
         /// <summary>
         /// Award skill points when a creature dies.
+        /// Also closes the class selection menu when the local player dies.
         /// Character.OnDeath is protected virtual — use string-based patch.
         /// </summary>
         [HarmonyPatch(typeof(Character), "OnDeath")]
@@ -272,7 +273,16 @@ namespace StartingClassMod
 
             static void Postfix(Character __instance)
             {
-                if (__instance == null || __instance.IsPlayer()) return;
+                if (__instance == null) return;
+
+                // Close class menu if the local player dies
+                if (__instance.IsPlayer())
+                {
+                    if (__instance == Player.m_localPlayer)
+                        StartingClassPlugin.Instance?.HideClassSelection();
+                    return; // Player deaths don't award skill points
+                }
+
                 if (LastHitField == null) return;
 
                 var lastHit = LastHitField.GetValue(__instance) as HitData;

@@ -216,6 +216,20 @@ namespace StartingClassMod
             }
         }
 
+        /// <summary>
+        /// Full deactivation: clears marks and removes m_customData keys so
+        /// UpdateMarks() does not re-scan on the next frame. Use on class switch/reset.
+        /// </summary>
+        public static void ForceDeactivate(Player player)
+        {
+            ClearAllMarks();
+            if (player != null)
+            {
+                player.m_customData.Remove(DurationKey);
+                player.m_customData.Remove(CooldownKey);
+            }
+        }
+
         public static void ClearAllMarks()
         {
             for (int i = _activeMarks.Count - 1; i >= 0; i--)

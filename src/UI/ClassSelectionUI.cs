@@ -1841,6 +1841,11 @@ namespace StartingClassMod
                 element.SetActive(true);
                 element.name = "ClassElement_" + cls.Name;
 
+                // Remove vanilla EventTrigger (has PointerEnter → InventoryGui.SetRecipe).
+                // Without this, scrolling the list fires hover events that glitch the preview camera.
+                var trigger = element.GetComponent<EventTrigger>();
+                if (trigger != null) DestroyImmediate(trigger);
+
                 // Bigger, wider class-list entry buttons.
                 var elemRT = element.transform as RectTransform;
                 StripLayoutComponents(element);
@@ -2335,6 +2340,9 @@ namespace StartingClassMod
             element.SetActive(true);
             element.name = "PowerEntry_" + powerId;
 
+            var trigger = element.GetComponent<EventTrigger>();
+            if (trigger != null) DestroyImmediate(trigger);
+
             var elemRT = element.transform as RectTransform;
             StripLayoutComponents(element);
 
@@ -2770,6 +2778,9 @@ namespace StartingClassMod
                 var element = Instantiate(invGui.m_recipeElementPrefab, _recipeListRoot);
                 element.SetActive(false);
                 element.name = "ArmorSetElement_" + i;
+
+                var trigger = element.GetComponent<EventTrigger>();
+                if (trigger != null) DestroyImmediate(trigger);
 
                 var elemRT = element.transform as RectTransform;
                 StripLayoutComponents(element);

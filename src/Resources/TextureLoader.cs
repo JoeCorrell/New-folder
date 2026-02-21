@@ -15,6 +15,7 @@ namespace StartingClassMod
     public static class TextureLoader
     {
         private static readonly Dictionary<string, Texture2D> Cache = new Dictionary<string, Texture2D>();
+        private static readonly Dictionary<string, Sprite> SpriteCache = new Dictionary<string, Sprite>();
         private static readonly Assembly ModAssembly = Assembly.GetExecutingAssembly();
 
         // ImageConversion.LoadImage(Texture2D, byte[]) via reflection
@@ -71,14 +72,23 @@ namespace StartingClassMod
         }
 
         /// <summary>
-        /// Create a Sprite from a loaded ability icon texture.
+        /// Create (or return cached) a Sprite from a loaded ability icon texture.
+        /// Sprites are cached for the session lifetime so multiple callers share the same object.
         /// </summary>
         public static Sprite LoadAbilitySprite(string name)
         {
+            if (string.IsNullOrEmpty(name)) return null;
+
+            if (SpriteCache.TryGetValue(name, out Sprite cached))
+                return cached;
+
             Texture2D tex = LoadAbilityIcon(name);
             if (tex == null) return null;
 
-            return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+            var sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+            sprite.name = name;
+            SpriteCache[name] = sprite;
+            return sprite;
         }
     }
 }

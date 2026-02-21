@@ -240,8 +240,10 @@ namespace StartingClassMod
         /// <summary>Clean up when logging out.</summary>
         public static void Destroy()
         {
-            foreach (var sprite in _spriteCache.Values)
-                if (sprite != null) Object.Destroy(sprite);
+            // Only destroy the fallback sprite — it's created locally and not owned by TextureLoader.
+            // Other sprites are session-cached by TextureLoader and shared across callers; do NOT destroy them.
+            if (_spriteCache.TryGetValue("_fallback", out Sprite fallback) && fallback != null)
+                Object.Destroy(fallback);
             _spriteCache.Clear();
             _loadedClass = null;
 
@@ -257,6 +259,9 @@ namespace StartingClassMod
             // Reload if class changed (e.g., player reset and chose a different class)
             if (_loadedClass == className && _spriteCache.Count > 0) return;
 
+            // Destroy the fallback sprite if present — it's locally owned, not from TextureLoader
+            if (_spriteCache.TryGetValue("_fallback", out Sprite oldFallback) && oldFallback != null)
+                Object.Destroy(oldFallback);
             _spriteCache.Clear();
             if (_placeholderTex != null)
             {
