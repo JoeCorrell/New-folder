@@ -9,6 +9,7 @@ namespace StartingClassMod
     /// Overrides the guardian power HUD to show the selected class ability
     /// when one is active. Uses a Harmony postfix on Hud.UpdateGuardianPower
     /// so our override runs AFTER vanilla sets the HUD, preventing flicker.
+    /// All ability-specific data is read from the ActiveAbilityRegistry.
     /// </summary>
     public static class AbilityHud
     {
@@ -41,6 +42,9 @@ namespace StartingClassMod
             string activePower = ActivePowerManager.GetActivePower(player);
             if (activePower == ActivePowerManager.Forsaken) return;
 
+            var entry = ActiveAbilityRegistry.Get(activePower);
+            if (entry == null) return;
+
             string className = ClassPersistence.GetSelectedClassName(player);
             if (string.IsNullOrEmpty(className)) return;
 
@@ -61,178 +65,53 @@ namespace StartingClassMod
                     hud.m_gpIcon.sprite = icon;
             }
 
-            // Override name and cooldown/status
-            switch (activePower)
-            {
-                case "MarkedByFate":
-                    UpdateMarkedByFateHud(player, hud);
-                    break;
-                case "BladeDance":
-                    UpdateBladeDanceHud(player, hud);
-                    break;
-                case "HuntersInstinct":
-                    UpdateHuntersInstinctHud(player, hud);
-                    break;
-                case "Pathfinder":
-                    UpdatePathfinderHud(player, hud);
-                    break;
-            }
+            // Override name and cooldown/status using registry data
+            UpdateAbilityHud(entry, player, hud);
         }
 
-        private static void UpdateMarkedByFateHud(Player player, Hud hud)
+        /// <summary>
+        /// Generic HUD update that works for any registered active ability.
+        /// Reads IsActive, GetDurationRemaining, GetCooldownRemaining, and
+        /// optional GetExtraHudText from the registry entry.
+        /// </summary>
+        private static void UpdateAbilityHud(ActiveAbilityRegistry.Entry entry, Player player, Hud hud)
         {
             if (hud.m_gpName != null)
-                hud.m_gpName.text = "Marked by Fate";
+                hud.m_gpName.text = entry.DisplayName;
 
-            if (hud.m_gpCooldown != null)
+            if (hud.m_gpCooldown == null) return;
+
+            hud.m_gpCooldown.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
+            hud.m_gpCooldown.overflowMode = TMPro.TextOverflowModes.Overflow;
+
+            bool isActive = entry.IsActive != null && entry.IsActive(player);
+
+            if (isActive)
             {
-                hud.m_gpCooldown.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
-                hud.m_gpCooldown.overflowMode = TMPro.TextOverflowModes.Overflow;
-
-                if (MarkedByFate.IsActive(player))
+                float dur = entry.GetDurationRemaining != null ? entry.GetDurationRemaining(player) : 0f;
+                string extra = entry.GetExtraHudText?.Invoke(player);
+                string timeText = StatusEffect.GetTimeString(dur);
+                hud.m_gpCooldown.text = string.IsNullOrEmpty(extra) ? timeText : $"{timeText} {extra}";
+                hud.m_gpCooldown.color = Color.white;
+                if (hud.m_gpIcon != null)
+                    hud.m_gpIcon.color = Color.white;
+            }
+            else
+            {
+                float cd = entry.GetCooldownRemaining != null ? entry.GetCooldownRemaining(player) : 0f;
+                if (cd > 0f)
                 {
-                    float dur = MarkedByFate.GetDurationRemaining(player);
-                    int marks = MarkedByFate.GetActiveMarkCount();
-                    hud.m_gpCooldown.text = $"{StatusEffect.GetTimeString(dur)} ({marks})";
-                    hud.m_gpCooldown.color = Color.white;
+                    hud.m_gpCooldown.text = StatusEffect.GetTimeString(cd);
+                    hud.m_gpCooldown.color = new Color(0.6f, 0.6f, 0.6f, 1f);
                     if (hud.m_gpIcon != null)
-                        hud.m_gpIcon.color = Color.white;
+                        hud.m_gpIcon.color = CooldownTint;
                 }
                 else
                 {
-                    float cd = MarkedByFate.GetCooldownRemaining(player);
-                    if (cd > 0f)
-                    {
-                        hud.m_gpCooldown.text = StatusEffect.GetTimeString(cd);
-                        hud.m_gpCooldown.color = new Color(0.6f, 0.6f, 0.6f, 1f);
-                        if (hud.m_gpIcon != null)
-                            hud.m_gpIcon.color = CooldownTint;
-                    }
-                    else
-                    {
-                        hud.m_gpCooldown.text = "Ready";
-                        hud.m_gpCooldown.color = Color.white;
-                        if (hud.m_gpIcon != null)
-                            hud.m_gpIcon.color = Color.white;
-                    }
-                }
-            }
-        }
-
-        private static void UpdateBladeDanceHud(Player player, Hud hud)
-        {
-            if (hud.m_gpName != null)
-                hud.m_gpName.text = "Blade Dance";
-
-            if (hud.m_gpCooldown != null)
-            {
-                hud.m_gpCooldown.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
-                hud.m_gpCooldown.overflowMode = TMPro.TextOverflowModes.Overflow;
-
-                if (BladeDance.IsActive())
-                {
-                    float remaining = BladeDance.GetTimeRemaining();
-                    hud.m_gpCooldown.text = $"{remaining:0}s";
+                    hud.m_gpCooldown.text = "Ready";
                     hud.m_gpCooldown.color = Color.white;
                     if (hud.m_gpIcon != null)
                         hud.m_gpIcon.color = Color.white;
-                }
-                else
-                {
-                    float cd = BladeDance.GetCooldownRemaining(player);
-                    if (cd > 0f)
-                    {
-                        hud.m_gpCooldown.text = StatusEffect.GetTimeString(cd);
-                        hud.m_gpCooldown.color = new Color(0.6f, 0.6f, 0.6f, 1f);
-                        if (hud.m_gpIcon != null)
-                            hud.m_gpIcon.color = CooldownTint;
-                    }
-                    else
-                    {
-                        hud.m_gpCooldown.text = "Ready";
-                        hud.m_gpCooldown.color = Color.white;
-                        if (hud.m_gpIcon != null)
-                            hud.m_gpIcon.color = Color.white;
-                    }
-                }
-            }
-        }
-
-        private static void UpdateHuntersInstinctHud(Player player, Hud hud)
-        {
-            if (hud.m_gpName != null)
-                hud.m_gpName.text = "Hunter's Instinct";
-
-            if (hud.m_gpCooldown != null)
-            {
-                hud.m_gpCooldown.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
-                hud.m_gpCooldown.overflowMode = TMPro.TextOverflowModes.Overflow;
-
-                if (HuntersInstinct.IsActive(player))
-                {
-                    float dur = HuntersInstinct.GetDurationRemaining(player);
-                    int marks = HuntersInstinct.GetActiveMarkCount();
-                    hud.m_gpCooldown.text = $"{StatusEffect.GetTimeString(dur)} ({marks})";
-                    hud.m_gpCooldown.color = Color.white;
-                    if (hud.m_gpIcon != null)
-                        hud.m_gpIcon.color = Color.white;
-                }
-                else
-                {
-                    float cd = HuntersInstinct.GetCooldownRemaining(player);
-                    if (cd > 0f)
-                    {
-                        hud.m_gpCooldown.text = StatusEffect.GetTimeString(cd);
-                        hud.m_gpCooldown.color = new Color(0.6f, 0.6f, 0.6f, 1f);
-                        if (hud.m_gpIcon != null)
-                            hud.m_gpIcon.color = CooldownTint;
-                    }
-                    else
-                    {
-                        hud.m_gpCooldown.text = "Ready";
-                        hud.m_gpCooldown.color = Color.white;
-                        if (hud.m_gpIcon != null)
-                            hud.m_gpIcon.color = Color.white;
-                    }
-                }
-            }
-        }
-
-        private static void UpdatePathfinderHud(Player player, Hud hud)
-        {
-            if (hud.m_gpName != null)
-                hud.m_gpName.text = "Pathfinder";
-
-            if (hud.m_gpCooldown != null)
-            {
-                hud.m_gpCooldown.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
-                hud.m_gpCooldown.overflowMode = TMPro.TextOverflowModes.Overflow;
-
-                if (Pathfinder.IsActive())
-                {
-                    float remaining = Pathfinder.GetTimeRemaining();
-                    hud.m_gpCooldown.text = $"{remaining:0}s";
-                    hud.m_gpCooldown.color = Color.white;
-                    if (hud.m_gpIcon != null)
-                        hud.m_gpIcon.color = Color.white;
-                }
-                else
-                {
-                    float cd = Pathfinder.GetCooldownRemaining(player);
-                    if (cd > 0f)
-                    {
-                        hud.m_gpCooldown.text = StatusEffect.GetTimeString(cd);
-                        hud.m_gpCooldown.color = new Color(0.6f, 0.6f, 0.6f, 1f);
-                        if (hud.m_gpIcon != null)
-                            hud.m_gpIcon.color = CooldownTint;
-                    }
-                    else
-                    {
-                        hud.m_gpCooldown.text = "Ready";
-                        hud.m_gpCooldown.color = Color.white;
-                        if (hud.m_gpIcon != null)
-                            hud.m_gpIcon.color = Color.white;
-                    }
                 }
             }
         }
@@ -270,19 +149,8 @@ namespace StartingClassMod
             }
             _loadedClass = className;
 
-            string[] iconNames;
-            switch (className)
-            {
-                case "Assassin":
-                    iconNames = new[] { "MarkedByFate", "BladeDance" };
-                    break;
-                case "Hunter":
-                    iconNames = new[] { "HuntersInstinct", "Pathfinder" };
-                    break;
-                default:
-                    iconNames = new string[0];
-                    break;
-            }
+            // Load icons for all registered active abilities of this class
+            string[] iconNames = ActiveAbilityRegistry.GetIconNames(className);
 
             foreach (string name in iconNames)
             {

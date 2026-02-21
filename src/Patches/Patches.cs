@@ -106,10 +106,7 @@ namespace StartingClassMod
                         seman.RemoveStatusEffect("SE_GhostStride".GetStableHashCode());
                         seman.RemoveStatusEffect("SE_Survivalist".GetStableHashCode());
                     }
-                    MarkedByFate.ForceDeactivate(player);
-                    BladeDance.ForceDeactivate(player);
-                    HuntersInstinct.ForceDeactivate(player);
-                    Pathfinder.ForceDeactivate(player);
+                    ActiveAbilityRegistry.ForceDeactivateAll(player);
                     ClassPersistence.ClearAllData(player);
                     terminal.AddString("StartingClass: Cleared class data. Opening selection menu...");
                 }
@@ -182,10 +179,7 @@ namespace StartingClassMod
                     seman.RemoveStatusEffect("SE_GhostStride".GetStableHashCode());
                     seman.RemoveStatusEffect("SE_Survivalist".GetStableHashCode());
                 }
-                MarkedByFate.ForceDeactivate(player);
-                BladeDance.ForceDeactivate(player);
-                HuntersInstinct.ForceDeactivate(player);
-                Pathfinder.ForceDeactivate(player);
+                ActiveAbilityRegistry.ForceDeactivateAll(player);
                 ActivePowerManager.SetActivePower(player, ActivePowerManager.Forsaken);
 
                 terminal.AddString($"StartingClass: Reset all abilities for {className}. Refunded {refunded} skill points.");
@@ -201,10 +195,7 @@ namespace StartingClassMod
             static void Prefix()
             {
                 StartingClassPlugin.Instance?.HideClassSelection();
-                MarkedByFate.ClearAllMarks();
-                BladeDance.Reset();
-                HuntersInstinct.ClearAllMarks();
-                Pathfinder.ClearAll();
+                ActiveAbilityRegistry.LogoutAll();
                 AbilityHud.Destroy();
             }
         }
@@ -357,22 +348,10 @@ namespace StartingClassMod
                     return false;
                 }
 
-                // Route to the selected class ability
-                switch (activePower)
-                {
-                    case "MarkedByFate":
-                        MarkedByFate.TryActivate(__instance);
-                        break;
-                    case "BladeDance":
-                        BladeDance.TryActivate(__instance);
-                        break;
-                    case "HuntersInstinct":
-                        HuntersInstinct.TryActivate(__instance);
-                        break;
-                    case "Pathfinder":
-                        Pathfinder.TryActivate(__instance);
-                        break;
-                }
+                // Route to the selected class ability via registry
+                var entry = ActiveAbilityRegistry.Get(activePower);
+                if (entry != null && entry.TryActivate(__instance))
+                    AbilityEffects.PlayActivation(__instance);
 
                 __result = true;
                 return false; // Skip the real guardian power

@@ -70,20 +70,20 @@ namespace StartingClassMod
             AddHudStatusEffect(player);
         }
 
-        public static void TryActivate(Player player)
+        public static bool TryActivate(Player player)
         {
-            if (player == null) return;
+            if (player == null) return false;
 
             string className = ClassPersistence.GetSelectedClassName(player);
-            if (className != "Hunter") return;
-            if (!AbilityManager.IsAbilityUnlocked(player, "Hunter", 1)) return;
+            if (className != "Hunter") return false;
+            if (!AbilityManager.IsAbilityUnlocked(player, "Hunter", 1)) return false;
 
-            if (IsActive(player)) return;
+            if (IsActive(player)) return false;
 
             if (GetCooldownRemaining(player) > 0f)
             {
                 player.Message(MessageHud.MessageType.Center, "Hunter's Instinct is not ready");
-                return;
+                return false;
             }
 
             ClearAllMarks();
@@ -97,10 +97,10 @@ namespace StartingClassMod
 
             _nextScanTime = 0f;
             ScanAndMark(player);
-            PlayActivateEffects(player);
             AddHudStatusEffect(player);
 
             player.Message(MessageHud.MessageType.Center, "Hunter's Instinct activated");
+            return true;
         }
 
         private static int ScanAndMark(Player player)
@@ -135,9 +135,24 @@ namespace StartingClassMod
             return newMarks;
         }
 
-        private static void PlayActivateEffects(Player player)
+        public static void Register()
         {
-            AbilityEffects.PlayActivation(player);
+            ActiveAbilityRegistry.Register(new ActiveAbilityRegistry.Entry
+            {
+                PowerId = "HuntersInstinct",
+                ClassName = "Hunter",
+                AbilityIndex = 1,
+                DisplayName = "Hunter's Instinct",
+                TryActivate = TryActivate,
+                ForceDeactivate = ForceDeactivate,
+                RestoreIfActive = RestoreIfActive,
+                Update = UpdateMarks,
+                OnLogout = ClearAllMarks,
+                IsActive = IsActive,
+                GetDurationRemaining = GetDurationRemaining,
+                GetCooldownRemaining = GetCooldownRemaining,
+                GetExtraHudText = (p) => $"({GetActiveMarkCount()})"
+            });
         }
 
         public static bool IsMarked(Character character)

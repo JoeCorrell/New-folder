@@ -74,23 +74,23 @@ namespace StartingClassMod
             AddHudStatusEffect(player);
         }
 
-        /// <summary>Activate: begin continuous scanning. Called from GP intercept.</summary>
-        public static void TryActivate(Player player)
+        /// <summary>Activate: begin continuous scanning. Called from GP intercept via registry.</summary>
+        public static bool TryActivate(Player player)
         {
-            if (player == null) return;
+            if (player == null) return false;
 
             string className = ClassPersistence.GetSelectedClassName(player);
-            if (className != "Assassin") return;
-            if (!AbilityManager.IsAbilityUnlocked(player, "Assassin", 1)) return;
+            if (className != "Assassin") return false;
+            if (!AbilityManager.IsAbilityUnlocked(player, "Assassin", 1)) return false;
 
             // Block if already active
-            if (IsActive(player)) return;
+            if (IsActive(player)) return false;
 
             // Check cooldown
             if (GetCooldownRemaining(player) > 0f)
             {
                 player.Message(MessageHud.MessageType.Center, "Marked by Fate is not ready");
-                return;
+                return false;
             }
 
             // Clear existing marks from previous activation
@@ -109,13 +109,11 @@ namespace StartingClassMod
             _nextScanTime = 0f;
             ScanAndMark(player);
 
-            // Play activation effects
-            PlayActivateEffects(player);
-
             // Add HUD status effect with icon + duration timer
             AddHudStatusEffect(player);
 
             player.Message(MessageHud.MessageType.Center, "Marked by Fate activated");
+            return true;
         }
 
         /// <summary>Scan for enemies within range and mark any new ones.</summary>
@@ -151,9 +149,24 @@ namespace StartingClassMod
             return newMarks;
         }
 
-        private static void PlayActivateEffects(Player player)
+        public static void Register()
         {
-            AbilityEffects.PlayActivation(player);
+            ActiveAbilityRegistry.Register(new ActiveAbilityRegistry.Entry
+            {
+                PowerId = "MarkedByFate",
+                ClassName = "Assassin",
+                AbilityIndex = 1,
+                DisplayName = "Marked by Fate",
+                TryActivate = TryActivate,
+                ForceDeactivate = ForceDeactivate,
+                RestoreIfActive = RestoreIfActive,
+                Update = UpdateMarks,
+                OnLogout = ClearAllMarks,
+                IsActive = IsActive,
+                GetDurationRemaining = GetDurationRemaining,
+                GetCooldownRemaining = GetCooldownRemaining,
+                GetExtraHudText = (p) => $"({GetActiveMarkCount()})"
+            });
         }
 
         /// <summary>Check if a specific character is currently marked.</summary>

@@ -59,32 +59,32 @@ namespace StartingClassMod
             AddHudStatusEffect(player);
         }
 
-        /// <summary>Try to activate Blade Dance. Called from GP intercept.</summary>
-        public static void TryActivate(Player player)
+        /// <summary>Try to activate Blade Dance. Called from GP intercept via registry.</summary>
+        public static bool TryActivate(Player player)
         {
-            if (player == null) return;
+            if (player == null) return false;
 
             string className = ClassPersistence.GetSelectedClassName(player);
-            if (className != "Assassin") return;
-            if (!AbilityManager.IsAbilityUnlocked(player, "Assassin", 5)) return;
+            if (className != "Assassin") return false;
+            if (!AbilityManager.IsAbilityUnlocked(player, "Assassin", 5)) return false;
 
-            if (IsActive()) return;
+            if (IsActive()) return false;
 
             if (GetCooldownRemaining(player) > 0f)
             {
                 player.Message(MessageHud.MessageType.Center, "Blade Dance is not ready");
-                return;
+                return false;
             }
 
-            if (ZNet.instance == null) return;
+            if (ZNet.instance == null) return false;
             double now = ZNet.instance.GetTimeSeconds();
             player.m_customData[DurationKey] = (now + Duration).ToString("F0");
             // Cooldown starts after duration ends
             player.m_customData[CooldownKey] = (now + Duration + Cooldown).ToString("F0");
 
-            PlayActivateEffects(player);
             AddHudStatusEffect(player);
             StartingClassPlugin.Log("Blade Dance activated.");
+            return true;
         }
 
         /// <summary>Called each frame from plugin Update to handle expiry.</summary>
@@ -116,9 +116,24 @@ namespace StartingClassMod
         /// <summary>Called on logout — state lives in m_customData, nothing to clean up.</summary>
         public static void Reset() { }
 
-        private static void PlayActivateEffects(Player player)
+        public static void Register()
         {
-            AbilityEffects.PlayActivation(player);
+            ActiveAbilityRegistry.Register(new ActiveAbilityRegistry.Entry
+            {
+                PowerId = "BladeDance",
+                ClassName = "Assassin",
+                AbilityIndex = 5,
+                DisplayName = "Blade Dance",
+                TryActivate = TryActivate,
+                ForceDeactivate = ForceDeactivate,
+                RestoreIfActive = RestoreIfActive,
+                Update = UpdateBladeDance,
+                OnLogout = Reset,
+                IsActive = (p) => IsActive(),
+                GetDurationRemaining = (p) => GetTimeRemaining(p),
+                GetCooldownRemaining = GetCooldownRemaining,
+                GetExtraHudText = null
+            });
         }
 
         private static void AddHudStatusEffect(Player player)

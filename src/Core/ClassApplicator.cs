@@ -31,10 +31,8 @@ namespace StartingClassMod
                 seman.RemoveStatusEffect("SE_GhostStride".GetStableHashCode());
                 seman.RemoveStatusEffect("SE_Survivalist".GetStableHashCode());
             }
-            MarkedByFate.ForceDeactivate(player);
-            HuntersInstinct.ForceDeactivate(player);
-            BladeDance.ForceDeactivate(player);
-            Pathfinder.ForceDeactivate(player);
+            ActiveAbilityRegistry.ForceDeactivateAll(player);
+            ActivePowerManager.SetActivePower(player, ActivePowerManager.Forsaken);
 
             // Mark as pending before we start applying (crash safety)
             ClassPersistence.SetPending(player);

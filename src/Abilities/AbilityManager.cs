@@ -153,78 +153,41 @@ namespace StartingClassMod
         {
             if (player == null) return;
 
-            switch (className)
+            // Active abilities are handled by the registry (RestoreIfActive on login)
+            string powerId = ActiveAbilityRegistry.GetPowerIdForAbility(className, abilityIndex);
+            if (powerId != null)
             {
-                case "Assassin":
-                    ApplyAssassinAbility(player, abilityIndex);
-                    break;
-                case "Hunter":
-                    ApplyHunterAbility(player, abilityIndex);
-                    break;
+                var entry = ActiveAbilityRegistry.Get(powerId);
+                entry?.RestoreIfActive?.Invoke(player);
+                return;
             }
+
+            // Passive abilities: apply persistent SEs where needed
+            ApplyPassiveAbility(player, className, abilityIndex);
         }
 
-        private static void ApplyAssassinAbility(Player player, int abilityIndex)
+        private static void ApplyPassiveAbility(Player player, string className, int abilityIndex)
         {
             var seman = player.GetSEMan();
             if (seman == null) return;
 
-            switch (abilityIndex)
+            // Assassin passives
+            if (className == "Assassin")
             {
-                case 0:
-                    // Killing Edge (passive) — handled via Harmony patch, no SE needed
-                    break;
-                case 1:
-                    // Marked by Fate — restore HUD SE if still active from previous session
-                    MarkedByFate.RestoreIfActive(player);
-                    break;
-                case 2:
-                    // Shadow Step — apply persistent SE
-                    ApplySE<SE_ShadowStep>(seman, "SE_ShadowStep");
-                    break;
-                case 3:
-                    // Nature's Shroud — apply persistent SE
-                    ApplySE<SE_NaturesShroud>(seman, "SE_NaturesShroud");
-                    break;
-                case 4:
-                    // Ghost Stride — apply persistent SE
-                    ApplySE<SE_GhostStride>(seman, "SE_GhostStride");
-                    break;
-                case 5:
-                    // Blade Dance — restore HUD SE if still active from previous session
-                    BladeDance.RestoreIfActive(player);
-                    break;
+                switch (abilityIndex)
+                {
+                    case 2: ApplySE<SE_ShadowStep>(seman, "SE_ShadowStep"); break;
+                    case 3: ApplySE<SE_NaturesShroud>(seman, "SE_NaturesShroud"); break;
+                    case 4: ApplySE<SE_GhostStride>(seman, "SE_GhostStride"); break;
+                }
             }
-        }
-
-        private static void ApplyHunterAbility(Player player, int abilityIndex)
-        {
-            var seman = player.GetSEMan();
-            if (seman == null) return;
-
-            switch (abilityIndex)
+            // Hunter passives
+            else if (className == "Hunter")
             {
-                case 0:
-                    // Predator's Mark (passive) — handled via Harmony patch, no SE needed
-                    break;
-                case 1:
-                    // Hunter's Instinct — restore HUD SE if still active from previous session
-                    HuntersInstinct.RestoreIfActive(player);
-                    break;
-                case 2:
-                    // Keen Eye (passive) — handled via Harmony patch, no SE needed
-                    break;
-                case 3:
-                    // Survivalist — apply persistent SE
-                    ApplySE<SE_Survivalist>(seman, "SE_Survivalist");
-                    break;
-                case 4:
-                    // Thick Hide (passive) — handled via Harmony patch, no SE needed
-                    break;
-                case 5:
-                    // Pathfinder — restore HUD SE if still active from previous session
-                    Pathfinder.RestoreIfActive(player);
-                    break;
+                switch (abilityIndex)
+                {
+                    case 3: ApplySE<SE_Survivalist>(seman, "SE_Survivalist"); break;
+                }
             }
         }
 

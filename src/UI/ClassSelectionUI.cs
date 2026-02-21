@@ -2503,17 +2503,7 @@ namespace StartingClassMod
 
         private static string GetPowerIdForAbility(string className, int abilityIndex)
         {
-            if (className == "Assassin")
-            {
-                if (abilityIndex == 1) return "MarkedByFate";
-                if (abilityIndex == 5) return "BladeDance";
-            }
-            if (className == "Hunter")
-            {
-                if (abilityIndex == 1) return "HuntersInstinct";
-                if (abilityIndex == 5) return "Pathfinder";
-            }
-            return null;
+            return ActiveAbilityRegistry.GetPowerIdForAbility(className, abilityIndex);
         }
 
         private string GetSelectedClassName()
